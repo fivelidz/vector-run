@@ -58,32 +58,32 @@ export class Road {
   _build() {
     const len = CFG.VISIBLE_AHEAD + CFG.VISIBLE_BEHIND + 40;
 
-    // grass base (wide) — mottled texture
+    const groundZ = -(CFG.VISIBLE_AHEAD - CFG.VISIBLE_BEHIND) / 2;
+    this._groundZ = groundZ;
+    this._groundLen = len;
+    this._segZ = 40; // vertex rows along Z for per-distance vertex-colour blending
+
+    // grass base (wide) — vertex-coloured so the theme can sweep from horizon
     const grassTex = noiseTexture(0.8);
     grassTex.repeat.set(24, len / 6);
-    const grassMat = flat(PAL.grass, { rough: 1 });
-    grassMat.map = grassTex;
-    const grass = new THREE.Mesh(
-      new THREE.PlaneGeometry(220, len),
-      grassMat
-    );
+    const grassGeo = new THREE.PlaneGeometry(220, len, 1, this._segZ);
+    const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, vertexColors: true, roughness: 1 });
+    const grass = new THREE.Mesh(grassGeo, grassMat);
     grass.rotation.x = -Math.PI / 2;
-    grass.position.set(0, -0.02, -(CFG.VISIBLE_AHEAD - CFG.VISIBLE_BEHIND) / 2);
+    grass.position.set(0, -0.02, groundZ);
     grass.receiveShadow = true;
     this.group.add(grass);
     this.grassMesh = grass;
+    this._initVColors(grassGeo, PAL.grass);
 
-    // road surface — asphalt texture for a less flat look
+    // road surface — vertex-coloured asphalt
     const roadTex = noiseTexture(0.9);
     roadTex.repeat.set(4, len / 5);
-    const roadMat = flat(PAL.road, { rough: 0.92 });
-    roadMat.map = roadTex;
-    const road = new THREE.Mesh(
-      new THREE.PlaneGeometry(this.roadW + CFG.ROAD_SHOULDER * 2, len),
-      roadMat
-    );
+    const roadGeo = new THREE.PlaneGeometry(this.roadW + CFG.ROAD_SHOULDER * 2, len, 1, this._segZ);
+    const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, vertexColors: true, roughness: 0.92 });
+    const road = new THREE.Mesh(roadGeo, roadMat);
     road.rotation.x = -Math.PI / 2;
-    road.position.z = grass.position.z;
+    road.position.z = groundZ;
     road.receiveShadow = true;
     this.group.add(road);
     this.roadMesh = road;
@@ -158,13 +158,99 @@ export class Road {
     hills.position.set(0, 12, -CFG.VISIBLE_AHEAD - 40);
     this.group.add(hills);
     this.hillsMesh = hills;
+
+    // ---- intersection marker (a perpendicular cross-road) used as the visual
+    // "seam" for theme transitions; spawned at the horizon and scrolled in.
+    this.intersection = new THREE.Group();
+    const xroad = new THREE.Mesh(new THREE.PlaneGeometry(120, 12),
+      new THREE.MeshStandardMaterial({ color: 0x2e3340, roughness: 0.95 }));
+    xroad.rotation.x = -Math.PI / 2; xroad.position.y = 0.015;
+    this.intersection.add(xroad);
+    // crosswalk stripes
+    for (let i = -5; i <= 5; i++) {
+      const s = box(1.0, 0.02, 5, flat(0xffffff, { emissive: 0x222222, emissiveIntensity: 0.1 }));
+      s.position.set(i * 2.4, 0.04, 0);
+      this.intersection.add(s);
+    }
+    // traffic-light posts on the corners
+    for (const sx of [-1, 1]) {
+      const post = box(0.2, 5, 0.2, flat(0x33363f)); post.position.set(sx * (this.halfRoad + 2), 2.5, 0);
+      const head = box(0.5, 1.2, 0.4, flat(0x111));
+      head.position.set(sx * (this.halfRoad + 2), 5, 0);
+      const grn = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), flat(0x33ff55, { emissive: 0x22cc44, emissiveIntensity: 1.2 }));
+      grn.position.set(sx * (this.halfRoad + 2), 4.7, 0.22);
+      this.intersection.add(post, head, grn);
+    }
+    this.intersection.visible = false;
+    this.intersection.position.z = -CFG.VISIBLE_AHEAD;
+    this.group.add(this.intersection);
+  }
+
+  // place the intersection at the far horizon (called when a transition starts)
+  triggerIntersection() {
+    this.intersection.visible = true;
+    this.intersection.position.z = -CFG.VISIBLE_AHEAD + 4;
+  }
+  // scroll the intersection toward the player; hide once it passes
+  updateIntersection(distDelta) {
+    if (!this.intersection.visible) return;
+    this.intersection.position.z += distDelta;
+    if (this.intersection.position.z > CFG.VISIBLE_BEHIND + 10) this.intersection.visible = false;
+  }
+
+  _initVColors(geo, hex) {
+    const c = new THREE.Color(hex);
+    const n = geo.attributes.position.count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+    geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+  }
+
+  // world Z for a vertex row index (0=far horizon .. segZ=nearest/behind)
+  _rowWorldZ(row) {
+    // PlaneGeometry local y runs +len/2 (top) .. -len/2 (bottom); after rot -90°
+    // about X, local +y -> world -z. Mesh sits at groundZ.
+    const localY = this._groundLen / 2 - (row / this._segZ) * this._groundLen;
+    return this._groundZ - localY; // world z (negative = ahead)
+  }
+
+  // Paint ground+road vertex colours: rows AHEAD of boundaryZ use colour B (the
+  // upcoming theme), rows behind use colour A (current). The boundary scrolls
+  // from the horizon toward the player => the new biome flows DOWN the road.
+  setGroundBlend(boundaryZ, grassA, grassB, roadA, roadB) {
+    this._paintRows(this.grassMesh, boundaryZ, grassA, grassB);
+    this._paintRows(this.roadMesh, boundaryZ, roadA, roadB);
+  }
+  _paintRows(mesh, boundaryZ, a, b) {
+    if (!mesh) return;
+    const geo = mesh.geometry; const col = geo.attributes.color; if (!col) return;
+    const cols = this._segZ + 1;       // vertices per row = 2 (PlaneGeometry width segs=1)
+    const ca = new THREE.Color(a), cb = new THREE.Color(b);
+    const tmp = new THREE.Color();
+    for (let row = 0; row <= this._segZ; row++) {
+      const wz = this._rowWorldZ(row);
+      // smooth band over ~30m around the boundary for a soft seam
+      const f = Math.max(0, Math.min(1, (boundaryZ - wz) / 30 + 0.5)); // ahead-> b
+      tmp.copy(ca).lerp(cb, f);
+      for (let cx = 0; cx < 2; cx++) {
+        const vi = row * 2 + cx;
+        col.setXYZ(vi, tmp.r, tmp.g, tmp.b);
+      }
+    }
+    col.needsUpdate = true;
   }
 
   // ---- theme hooks (called by terrain.js) ----
   setColors(ground, groundAlt, road) {
-    if (this.grassMesh) this.grassMesh.material.color.copy(ground);
-    if (this.roadMesh) this.roadMesh.material.color.copy(road);
-    // hills handled by terrain (they sit at the horizon -> far transition)
+    // uniform fallback: paint every row the same colour (used outside transitions)
+    if (this.grassMesh) this._fillVColor(this.grassMesh, ground);
+    if (this.roadMesh) this._fillVColor(this.roadMesh, road);
+  }
+  _fillVColor(mesh, hex) {
+    const geo = mesh.geometry, col = geo.attributes.color; if (!col) return;
+    const c = new THREE.Color(hex);
+    for (let i = 0; i < col.count; i++) col.setXYZ(i, c.r, c.g, c.b);
+    col.needsUpdate = true;
   }
 
   // Set the CURRENT theme for prop spawning. We do NOT rebuild existing props —
@@ -259,6 +345,7 @@ export class Road {
       }
       s.userData._lastZ = z;
     }
+    this.updateIntersection(distDelta);
   }
 }
 

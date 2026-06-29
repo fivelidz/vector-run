@@ -29,10 +29,20 @@ export class Player {
       }
     });
 
+    // ---- real headlight SpotLight (lights the road & cars ahead at night) ----
+    this.headlight = new THREE.SpotLight(0xfff2cc, 0, 60, Math.PI / 5, 0.5, 1.2);
+    this.headlight.position.set(0, 1.0, -1.5);          // at the car's nose
+    this.headTarget = new THREE.Object3D();
+    this.headTarget.position.set(0, 0, -30);            // aim down the road
+    this.mesh.add(this.headlight);
+    this.mesh.add(this.headTarget);
+    this.headlight.target = this.headTarget;
+
     this.reset();
   }
 
   reset() {
+    if (this.headlight) this.headlight.intensity = 0; // off until night
     this.x = 0;             // lateral position (metres)
     this.targetX = 0;       // desired lateral position (steering target)
     this.vx = 0;            // (target-x) delta, used for visual lean only
@@ -214,35 +224,33 @@ export class Player {
     maxX = Math.min(maxX, road.drivableHalf);
     this.minLaneX = minX; this.maxLaneX = maxX;
 
-    // ---- momentum / drift steering (tunable) ----
-    // Velocity-based: input accelerates lateral velocity, which is damped (grip).
-    // Lower grip / higher accel = more drifty. When you release, a gentle lane
-    // magnet nudges you toward the nearest centre. All values are live-tunable.
+    // ---- drift steering (tunable, predictable) ----
+    // While steering, lateral velocity eases toward (steer * maxVel) — the
+    // steerAccel lag gives the "drift" feel. On release, velocity bleeds off via
+    // grip and a gentle magnet eases the car to the nearest lane CENTRE. No
+    // velocity-spring (which oscillated and felt like wrong-way drift before).
     if (this.state === PStates.DRIVE) {
-      const T = CFG.TUNE; // live tuning object
+      const T = CFG.TUNE;
       const steer = input.steer || 0;
       const steering = Math.abs(steer) > 0.08;
 
-      // accelerate toward desired lateral velocity (= steer * max speed)
       const desiredVx = steer * T.steerMaxVel;
-      this.vx += (desiredVx - this.vx) * Math.min(1, T.steerAccel * dt);
-
-      // grip damping (drift): pulls vx toward 0 when not steering
-      if (!steering) {
-        this.vx -= this.vx * Math.min(1, T.grip * dt);
-        // subtle lane magnet on release
-        const cx = road.laneX(this._nearestLane(road));
-        this.vx += (cx - this.x) * T.laneMagnet * dt;
-      }
+      // approach desired velocity (fast when steering, grip-bleed when released)
+      const k = steering ? T.steerAccel : T.grip;
+      this.vx += (desiredVx - this.vx) * Math.min(1, k * dt);
 
       this.x += this.vx * dt;
-      // soft walls: bounce velocity back at edges
-      if (this.x < minX) { this.x = minX; if (this.vx < 0) this.vx *= -0.3; }
-      if (this.x > maxX) { this.x = maxX; if (this.vx > 0) this.vx *= -0.3; }
-      this.targetX = this.x; // keep in sync for any external reads
 
-      if (this.x < minX) this.x = minX;
-      if (this.x > maxX) this.x = maxX;
+      // release: ease POSITION toward nearest lane centre (subtle aim-assist)
+      if (!steering && Math.abs(this.vx) < 3) {
+        const cx = road.laneX(this._nearestLane(road));
+        this.x += (cx - this.x) * Math.min(1, T.laneMagnet * dt);
+      }
+
+      // hard walls (no bounce — bouncing felt like wrong-direction drift)
+      if (this.x < minX) { this.x = minX; if (this.vx < 0) this.vx = 0; }
+      if (this.x > maxX) { this.x = maxX; if (this.vx > 0) this.vx = 0; }
+      this.targetX = this.x;
     }
 
     // ---- spin physics (gentle wobble + quick recover) ----

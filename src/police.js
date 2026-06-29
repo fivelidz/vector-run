@@ -84,8 +84,8 @@ export class Police {
       }
     }
 
-    // ---- spawn / despawn cruisers (visual only) ----
-    const wantCruisers = this.active ? Math.min(3, this.collisions) : 0;
+    // ---- spawn / despawn: only ONE cruiser chasing (no stacking) ----
+    const wantCruisers = this.active ? 1 : 0;
     const liveCount = this.cruisers.filter((c) => c.mesh.visible).length;
     this._spawnTimer -= dt;
     if (liveCount < wantCruisers && this._spawnTimer <= 0) { this._spawnCruiser(); this._spawnTimer = 1.6; }
@@ -105,15 +105,20 @@ export class Police {
       // integrate the gap directly with the speed difference (feels physical)
       c.z -= closing * dt;                       // closing>0 -> z decreases (gain)
       c.z += (CFG.POLICE_TAIL_DIST - c.z) * Math.min(1, dt * CFG.POLICE_CLOSE_RATE * 0.4);
-      if (c.z < CFG.CAR_HALF_L + 0.4) c.z = CFG.CAR_HALF_L + 0.4; // ride your bumper
+      // never overlap the player — keep a full car-length behind (nudge, not through)
+      const minGap = CFG.CAR_HALF_L * 2 + 0.6;
+      if (c.z < minGap) c.z = minGap;
       if (c.z > CFG.VISIBLE_BEHIND) { c.lostTimer = (c.lostTimer || 0) + dt; if (c.lostTimer > 2.5) { c.mesh.visible = false; continue; } }
       else c.lostTimer = 0;
       c.targetX += (player.x - c.targetX) * Math.min(1, dt * 1.2);
       c.x += (c.targetX - c.x) * Math.min(1, dt * 2.2);
       c.mesh.position.set(c.x, 0, c.z);
 
-      // contact = cop riding your bumper in your lane (only possible when slow)
-      if (c.z < CFG.CAR_HALF_L + 1.5 && Math.abs(c.x - player.x) < CFG.CAR_HALF_W + 0.8) anyContact = true;
+      // a small nudge wobble when right on the bumper (visual life, no pass-through)
+      if (c.z <= minGap + 0.3) c.mesh.position.x += Math.sin(this.time * 20) * 0.04;
+
+      // contact = cop on your bumper in your lane (only possible when slow)
+      if (c.z < minGap + 1.0 && Math.abs(c.x - player.x) < CFG.CAR_HALF_W + 0.8) anyContact = true;
 
       const lb = c.mesh.userData.lightbar;
       if (lb) {

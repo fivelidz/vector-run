@@ -3,6 +3,9 @@
 // road LAYOUT (lanes, oncoming, median) is owned by sections.js. Themes cycle by
 // distance, lerping every color over a transition window so the change is smooth.
 import * as THREE from 'three';
+import { CFG } from './config.js';
+const CFG_VISIBLE_AHEAD = CFG.VISIBLE_AHEAD;
+const CFG_VISIBLE_BEHIND = CFG.VISIBLE_BEHIND;
 
 // scenery prop kinds a theme can request (built in road.js):
 //   'lamp' | 'tree' | 'sign' | 'cactus' | 'pine' | 'building' | 'rock' | 'billboard'
@@ -95,6 +98,9 @@ export class Terrain {
     let t = 0;
     if (into > THEME_DISTANCE - TRANSITION) {
       t = (into - (THEME_DISTANCE - TRANSITION)) / TRANSITION; // 0..1
+      // at the very start of the window, drop an intersection at the horizon as
+      // the visual "seam" you drive through into the new biome
+      if (this._transBase !== baseIdx) { this._transBase = baseIdx; this.road.triggerIntersection?.(); }
     }
     // swap scenery props to theme `b` midway through the fade, so new props
     // stream in from the horizon while colours are still blending (no hard jump)
@@ -149,12 +155,18 @@ export class Terrain {
     }
     if (e.amb) e.amb.intensity = a.ambInt + (b.ambInt - a.ambInt) * t;
 
-    // ground + road (NEAR) lag behind so they change last, as you arrive
-    this.road.setColors(
-      this._lerpColor(c.ground, a.ground, b.ground, tNear),
-      this._lerpColor(c.groundAlt, a.groundAlt, b.groundAlt, tNear),
-      this._lerpColor(c.roadCol, a.road, b.road, tNear),
-    );
+    // GROUND + ROAD: a boundary sweeps from the horizon toward the player so the
+    // new biome's ground colour FLOWS DOWN the road (not a whole-scene flip).
+    if (t <= 0) {
+      this.road.setColors(a.ground, a.groundAlt, a.road); // settled: uniform
+    } else if (t >= 1) {
+      this.road.setColors(b.ground, b.groundAlt, b.road);
+    } else {
+      // boundaryZ: -VISIBLE_AHEAD (far) at t=0  ->  +VISIBLE_BEHIND (past) at t=1
+      const from = -CFG_VISIBLE_AHEAD, to = CFG_VISIBLE_BEHIND;
+      const boundaryZ = from + (to - from) * t;
+      this.road.setGroundBlend(boundaryZ, a.ground, b.ground, a.road, b.road);
+    }
   }
 
   _applyInstant(theme) {

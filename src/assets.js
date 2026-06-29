@@ -143,33 +143,45 @@ export function addHeadlightBeams(grp, dims) {
   const W = dims.W ?? 1.5, L = dims.L ?? 3.4, FWD = dims.FWD ?? -1;
   const beams = new THREE.Group();
   const mats = [];
-  // two long, low, tapering light cones from each headlight (volumetric look)
-  const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xfff2c0, transparent: true, opacity: 0, depthWrite: false,
-    blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-  });
-  mats.push(beamMat);
+  const tex = _softGlowTexture();
+  // one soft, FEATHERED light pool per headlight, stretched down the road.
+  // A radial-gradient sprite = smooth falloff (no hard specular disc).
   for (const sx of [-1, 1]) {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(1.0, L * 3.0, 16, 1, true), beamMat);
-    cone.rotation.x = FWD * Math.PI / 2;          // lay it along the road, forward
-    cone.position.set(sx * W * 0.28, 0.5, FWD * (L * 1.4));
-    cone.scale.set(0.85, 1, 0.32);                // wide & flat = headlight spread
-    beams.add(cone);
-  }
-  // two bright elliptical ground pools where the beams land
-  for (const sx of [-1, 1]) {
-    const pm = new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+    const pm = new THREE.MeshBasicMaterial({ map: tex, color: 0xfff1c4, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
     mats.push(pm);
-    const pool = new THREE.Mesh(new THREE.CircleGeometry(L * 0.7, 20), pm);
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(2.4, L * 2.6), pm);
     pool.rotation.x = -Math.PI / 2;
-    pool.scale.set(0.55, 1.6, 1);
-    pool.position.set(sx * W * 0.3, 0.05, FWD * (L * 1.3));
+    pool.position.set(sx * W * 0.3, 0.04, FWD * (L * 1.35));
     beams.add(pool);
+  }
+  // faint soft halo right at the lamps (gentle bloom, not a hard dot)
+  for (const sx of [-1, 1]) {
+    const hm = new THREE.MeshBasicMaterial({ map: tex, color: 0xfff4cf, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+    mats.push(hm);
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.1), hm);
+    halo.position.set(sx * W * 0.32, 0.72, FWD * (L * 0.5));
+    beams.add(halo);
   }
   beams.visible = false;
   grp.add(beams);
   grp.userData.beams = beams;
-  grp.userData.beamMats = mats; // [cone, poolL, poolR]
+  grp.userData.beamMats = mats;
+  grp.userData.beamHalos = mats.slice(2); // last two are the lamp halos
+}
+
+// cached soft radial-gradient texture (white center -> transparent edge)
+let _glowTex = null;
+function _softGlowTexture() {
+  if (_glowTex) return _glowTex;
+  const s = 128; const cv = document.createElement('canvas'); cv.width = cv.height = s;
+  const ctx = cv.getContext('2d');
+  const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.5)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+  _glowTex = new THREE.CanvasTexture(cv);
+  return _glowTex;
 }
 
 // toggle a car's night lighting (beams + brighter lights)
@@ -177,8 +189,11 @@ export function setCarNight(carMesh, night) {
   const u = carMesh.userData;
   if (u.beams) u.beams.visible = night;
   if (u.beamMats) {
-    u.beamMats[0].opacity = 0.07;                 // cones (subtle volumetric)
-    for (let i = 1; i < u.beamMats.length; i++) u.beamMats[i].opacity = 0.5; // ground pools
+    // sprites are now just a soft accent glow (real SpotLight does the lighting)
+    u.beamMats[0].opacity = night ? 0.35 : 0;
+    u.beamMats[1].opacity = night ? 0.35 : 0;
+    if (u.beamMats[2]) u.beamMats[2].opacity = night ? 0.3 : 0;
+    if (u.beamMats[3]) u.beamMats[3].opacity = night ? 0.3 : 0;
   }
   if (u.headMat) u.headMat.emissiveIntensity = night ? 2.2 : 1.0;
   if (u.tailMat) u.tailMat.emissiveIntensity = night ? 1.6 : 0.8;
@@ -217,13 +232,17 @@ export function makeEnemy() {
 // slow grenade projectile (arcs through the air, dodgeable)
 export function makeGrenade() {
   const grp = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8),
-    new THREE.MeshStandardMaterial({ color: 0x3a4a2a, emissive: 0x223311, emissiveIntensity: 0.3, roughness: 0.6 }));
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10),
+    new THREE.MeshStandardMaterial({ color: 0x2e3a22, emissive: 0x334411, emissiveIntensity: 0.4, roughness: 0.5, metalness: 0.3 }));
   grp.add(body);
-  // blinking red tip
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6),
-    new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff0000, emissiveIntensity: 1.5 }));
-  tip.position.y = 0.28; grp.add(tip);
+  // big blinking red warning light on top
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8),
+    new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff0000, emissiveIntensity: 2.0 }));
+  tip.position.y = 0.42; grp.add(tip);
+  // danger ring on the ground (always visible from above)
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 0.85, 18),
+    new THREE.MeshBasicMaterial({ color: 0xff3322, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = -0.25; grp.add(ring);
   grp.userData.tip = tip;
   return grp;
 }

@@ -94,6 +94,7 @@ export const CFG = {
   ENEMY_LEAD_DIST: 10,      // metres they drive AHEAD of the player to attack
   ENEMY_FIRE_INTERVAL: 2.6, // seconds between grenade lobs
   GRENADE_SPEED: 9,         // grenade backward speed (slow & dodgeable)
+  GRENADE_FUSE: 2.5,        // seconds a landed grenade sits before auto-detonating
   ENEMY_NPC_THIN: 0.45,     // multiply NPC fill chance while enemies are present
 
   // ---- Power-ups ----
@@ -105,6 +106,7 @@ export const CFG = {
   COIN_VALUE: 5,
 
   // ---- Camera ----
+  HEADLIGHT_INTENSITY: 3.0, // player real SpotLight strength at night
   CAM_HEIGHT: 5.0,
   CAM_BACK: 13.5,
   CAM_LOOK_AHEAD: 18,

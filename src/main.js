@@ -33,7 +33,7 @@ class Game {
     this.director = new SectionDirector();
     this.traffic = new Traffic(this.engine.scene, this.road);
     this.police = new Police(this.engine.scene, this.road, this.traffic);
-    this.enemies = new Enemies(this.engine.scene, this.road, this.traffic);
+    this.enemies = new Enemies(this.engine.scene, this.road, this.traffic, this.police);
 
     this.player = null; // built on play (uses chosen car color)
 
@@ -191,6 +191,7 @@ class Game {
       this._night = terr.night;
       setCarNight(p.mesh, this._night);
       this.traffic.setNight(this._night);
+      if (p.headlight) p.headlight.intensity = this._night ? CFG.HEADLIGHT_INTENSITY : 0;
     }
 
     // player physics
@@ -312,16 +313,21 @@ class Game {
     if (km > (this._lastKm || 0)) { this._lastKm = km; this.score += 200; this.hud.combo(km + ' KM! +200', '#ffd23f'); }
 
     // enemy gang cars (drive ahead, lob grenades; ram them off the road)
-    this.enemies.update(dt, p, this.police.active, (ev, c) => {
+    this.enemies.update(dt, p, this.police.active, (ev, data) => {
       if (ev === 'shoot') this.audio.click?.();
-      if (ev === 'grenadeHit') {
-        // grenade explosion: spin-out + counts as a crash toward wanted
-        p.impact('heavy', (Math.random() < 0.5 ? -1 : 1), 0);
-        this.engine.addShake(0.6);
-        this.fx.sparks(p.x, 0.9, 0, 22, 0xff7d2a);
-        this.fx.smoke(p.x, 0.5, 0, 12);
+      if (ev === 'enemyHitNPC') { this.fx.sparks(data.x, 0.7, data.z, 10, 0xffae42); this.audio.crash(false); }
+      if (ev === 'enemyHitCop') { this.fx.sparks(data.x, 0.8, data.z, 16, 0x4ea3ff); this.fx.smoke(data.x, 0.5, data.z, 8); this.audio.crash(true); this.hud.combo('COP DOWN!', '#4ea3ff'); }
+      if (ev === 'explode') {
+        // explosion FX at the landing spot (always visible)
+        this.fx.sparks(data.x, 0.6, data.z, 24, 0xff7d2a);
+        this.fx.smoke(data.x, 0.5, data.z, 14);
+        this.engine.addShake(data.hit ? 0.6 : 0.25);
         this.audio.crash(true);
-        this.police.registerCollision();
+        // only hurts you if you were on the spot (and not protected)
+        if (data.hit && !p.isInvuln() && !(p.hasInvincible && p.hasInvincible())) {
+          p.impact('heavy', (Math.random() < 0.5 ? -1 : 1), 0);
+          this.police.registerCollision();
+        }
       }
     });
     // ram an enemy car off the road for points
