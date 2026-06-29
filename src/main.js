@@ -122,6 +122,7 @@ class Game {
     this.terrain.reset();
     this._night = false;
     this._lastOncoming = 0; this._lastMedian = false;
+    this._lastKm = 0;
     this.hud.clearWanted();
     this.score = 0; this.runCoins = 0; this.comboMult = 1; this.comboTimer = 0;
     this._acc = 0; this._last = performance.now(); // fresh clock for the run
@@ -292,7 +293,12 @@ class Game {
     this.police.update(dt, p, this.director.difficulty, (ev) => {
       if (ev === 'hazard') this.hud.combo('ROADBLOCK!', '#ff5d5d');
       if (ev === 'busted') this._gameOver('busted');
+      if (ev === 'escaped') { this.score += 500; this.hud.combo('ESCAPED! +500', '#5dff9b'); }
     }, section);
+
+    // distance milestones (every 1km) — score bonus + callout
+    const km = Math.floor(p.distance / 1000);
+    if (km > (this._lastKm || 0)) { this._lastKm = km; this.score += 200; this.hud.combo(km + ' KM! +200', '#ffd23f'); }
 
     // enemy gang cars (shoot at you; you can ram them off the road)
     this.enemies.update(dt, p, this.police.active, (ev, c) => {

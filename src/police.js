@@ -77,10 +77,10 @@ export class Police {
       this.heat = CFG.HEAT_MAX * (1 - sinceHit / CFG.COLLISION_WINDOW);
     } else {
       this.heat = 0;
-      // window expired with < bust collisions: cops lose interest, reset streak
+      // window expired: cops lose interest, reset streak (you escaped!)
       if (this.collisions >= 1 && sinceHit >= CFG.COLLISION_WINDOW) {
         this.collisions = 0;
-        this.active = false;
+        if (this.active) { this.active = false; onEvent?.('escaped'); }
       }
     }
 

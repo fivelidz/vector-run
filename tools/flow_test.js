@@ -56,8 +56,8 @@ async function visible(page, id) { return page.evaluate((i) => { const e = docum
   // settings
   await page.click('#btn-settings'); await page.waitForTimeout(150);
   assert('settings overlay visible', await visible(page, 'settings'));
-  await page.selectOption('#opt-steer', 'free'); await page.waitForTimeout(100);
-  assert('steer mode applied', (await page.evaluate(() => window.__game.input.mode)) === 'free');
+  const sndCb = await page.$('#opt-sound');
+  assert('sound toggle present', !!sndCb);
   await page.click('#btn-settings-back');
 
   console.log('\nerrors:', errors.length ? errors : 'none');

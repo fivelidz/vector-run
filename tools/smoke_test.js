@@ -43,7 +43,7 @@ const OUT = path.join(__dirname, '..', 'docs', 'screenshot.png');
       const g = window.__game;
       // force a lane change pulse
       g.input.laneDir = d;
-      g.input._boostHeld = Math.random() < 0.5;
+      g.input.steer = (Math.random() < 0.5 ? -1 : 1);
     }, i % 2 === 0 ? -1 : 1);
     await page.waitForTimeout(160);
   }

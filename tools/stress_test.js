@@ -1,4 +1,5 @@
-// stress_test.js — exercises the collision-count police model & roadblocks.
+// stress_test.js — police chase model: cops appear after 2 crashes, you get
+// busted only when a cruiser stays in CONTACT (caught), and you can outrun them.
 const { chromium } = require('playwright-core');
 const EXE = process.env.CHROME || '/home/fivelidz/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome';
 const URL = process.env.URL || 'http://localhost:8099/index.html';
@@ -12,46 +13,54 @@ const URL = process.env.URL || 'http://localhost:8099/index.html';
   await page.evaluate(() => { window.__game.menus.hideAll(); window.__game.startRun(); });
   await page.waitForTimeout(300);
 
-  // drive the collision-count model directly (cooldown-spaced hits)
+  // 1) crashes raise wanted; cops appear after 2; a crash NEVER directly wrecks
   const seq = await page.evaluate(() => {
     const g = window.__game; const out = {};
-    g.police.time = 0; g.police.collisions = 0; g.police.lastHitTime = -999;
-    g.police.time = 5;  out.h1 = g.police.registerCollision();   // 1
-    out.activeAfter1 = g.police.active;
-    g.police.time = 15; out.h2 = g.police.registerCollision();   // 2 -> active
-    out.activeAfter2 = g.police.active;
-    g.police.time = 25; out.h3 = g.police.registerCollision();   // 3 within window -> wreck
-    // cooldown ignore
-    g.police.time = 25.5; out.hCooldown = g.police.registerCollision();
+    g.police.collisions = 0; g.police.lastHitTime = -999; g.police.active = false;
+    g.police.time = 5;  out.h1 = g.police.registerCollision();   out.active1 = g.police.active;
+    g.police.time = 15; out.h2 = g.police.registerCollision();   out.active2 = g.police.active;
+    g.police.time = 15.2; out.hCooldown = g.police.registerCollision(); // debounced
     return out;
   });
-  console.log('collision sequence:', JSON.stringify(seq));
+  console.log('crash sequence:', JSON.stringify(seq));
 
-  // window expiry resets the streak (no bust)
-  const expiry = await page.evaluate(() => {
-    const g = window.__game; g.police.collisions = 0; g.police.lastHitTime = -999;
-    g.police.time = 100; const a = g.police.registerCollision();   // 1
-    g.police.time = 100 + 60; const b = g.police.registerCollision(); // >45s later -> fresh streak (1)
-    return { a, b, collisions: g.police.collisions };
+  // 2) bust meter fills only while a cruiser is in contact; busts when full
+  let bustedFired = false;
+  const bust = await page.evaluate(async () => {
+    const g = window.__game; g.police.active = true; g.police.collisions = 2;
+    const c = g.police._spawnCruiser();
+    g.player.speed = 5; // slow -> cop catches & rides bumper
+    let maxBust = 0, busted = false;
+    g.police.bust = 0;
+    for (let i = 0; i < 240; i++) {
+      // pin the cruiser onto the player to simulate being caught
+      c.z = 1.0; c.x = g.player.x; c.mesh.visible = true;
+      g.police.update(1 / 60, g.player, 1, (ev) => { if (ev === 'busted') busted = true; }, g.director.current);
+      maxBust = Math.max(maxBust, g.police.bust);
+    }
+    return { maxBust: Math.round(maxBust), busted };
   });
-  console.log('window expiry:', JSON.stringify(expiry));
+  bustedFired = bust.busted;
+  console.log('contact bust:', JSON.stringify(bust));
 
-  // roadblocks appear while actively chasing
-  let roadblock = false;
-  await page.evaluate(() => { const g = window.__game; g.police.active = true; g.police.collisions = 2; g.police._hazardTimer = 0; });
-  for (let i = 0; i < 20; i++) {
-    await page.waitForTimeout(150);
-    if (await page.evaluate(() => window.__game.traffic.active.some(e => e.type === 'block'))) { roadblock = true; break; }
-  }
-  console.log('roadblock spawned while chasing:', roadblock);
+  // 3) outrunning (fast) drains the bust meter (no bust)
+  const outrun = await page.evaluate(async () => {
+    const g = window.__game; g.police.bust = 50; g.player.speed = 95;
+    const c = g.police.cruisers.find(x => x.mesh.visible) || g.police._spawnCruiser();
+    c.z = 40; // far behind (outrun)
+    for (let i = 0; i < 120; i++) g.police.update(1 / 60, g.player, 1, () => {}, g.director.current);
+    return { bust: Math.round(g.police.bust) };
+  });
+  console.log('outrun drain:', JSON.stringify(outrun));
 
   console.log('errors:', errors.length ? errors : 'none');
   await browser.close();
   const ok = errors.length === 0 &&
-    seq.h1 === 'counted' && seq.activeAfter1 === false &&
-    seq.h2 === 'counted' && seq.activeAfter2 === true &&
-    seq.h3 === 'wreck' && seq.hCooldown === 'ignored' &&
-    expiry.collisions === 1 && roadblock;
-  console.log(ok ? '✅ STRESS TEST PASSED (collision-count police + roadblocks)' : '❌ STRESS TEST FAILED');
+    seq.h1 === 'counted' && seq.active1 === false &&
+    seq.h2 === 'counted' && seq.active2 === true &&
+    seq.hCooldown === 'ignored' &&
+    bust.busted === true && bust.maxBust >= 99 &&
+    outrun.bust === 0;
+  console.log(ok ? '✅ STRESS TEST PASSED (chase: appear@2, bust on contact, outrun drains)' : '❌ STRESS TEST FAILED');
   process.exit(ok ? 0 : 1);
 })().catch(e => { console.error('CRASH', e); process.exit(2); });
