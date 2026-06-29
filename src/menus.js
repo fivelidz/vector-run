@@ -54,6 +54,20 @@ export class Menus {
     mus.addEventListener('change', () => { Save.setSetting('music', mus.checked); this.audio?.setMusic(mus.checked); });
     const q = document.getElementById('opt-quality'); q.value = s.quality;
     q.addEventListener('change', () => { Save.setSetting('quality', q.value); this.onQualityChange?.(q.value); });
+
+    // steering tuning sliders (live)
+    const tune = Save.tune;
+    const bindTune = (id, key) => {
+      const el = document.getElementById(id); if (!el) return;
+      el.value = tune[key];
+      el.addEventListener('input', () => { const v = parseFloat(el.value); Save.setTune(key, v); this.onTuneChange?.(key, v); });
+    };
+    bindTune('tune-accel', 'steerAccel');
+    bindTune('tune-grip', 'grip');
+    bindTune('tune-vel', 'steerMaxVel');
+    bindTune('tune-magnet', 'laneMagnet');
+    const reset = document.getElementById('btn-tune-reset');
+    if (reset) reset.addEventListener('click', () => { this.onTuneReset?.(); });
   }
 
   hideAll() {

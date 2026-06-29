@@ -105,6 +105,13 @@
     <div id="settings" class="overlay hidden">
       <div class="menu-card">
         <h1 class="title-sm">SETTINGS</h1>
+        <div class="opt-group">STEERING FEEL</div>
+        <label class="opt slider"><span>Responsiveness</span><input type="range" id="tune-accel" min="2" max="14" step="0.5" /></label>
+        <label class="opt slider"><span>Drift (low grip)</span><input type="range" id="tune-grip" min="1.5" max="9" step="0.5" /></label>
+        <label class="opt slider"><span>Turn speed</span><input type="range" id="tune-vel" min="6" max="18" step="0.5" /></label>
+        <label class="opt slider"><span>Lane assist</span><input type="range" id="tune-magnet" min="0" max="6" step="0.5" /></label>
+        <button id="btn-tune-reset" class="ghost">Reset Steering</button>
+        <div class="opt-group">GAME</div>
         <label class="opt"><span>Sound</span><input type="checkbox" id="opt-sound" checked /></label>
         <label class="opt"><span>Music</span><input type="checkbox" id="opt-music" checked /></label>
         <label class="opt"><span>Quality</span>

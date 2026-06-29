@@ -112,13 +112,27 @@ export class Traffic {
   }
 
   // Police hazard: roadblock across all lanes but one random gap.
-  spawnRoadblock(section, z = -CFG.VISIBLE_AHEAD * 0.85) {
+  spawnRoadblock(section, z = -CFG.VISIBLE_AHEAD * 0.95) {
     const lanes = section.lanes;
-    const gap = section.oncomingLanes + Math.floor(Math.random() * (lanes - section.oncomingLanes));
-    for (let lane = section.oncomingLanes; lane < lanes; lane++) {
+    const onc = section.oncomingLanes;
+    const fwd = lanes - onc;
+    // gap is the player's current open lane if possible, else centre — always reachable
+    let gap = (this._openLane != null && this._openLane >= onc) ? this._openLane : onc + Math.floor(fwd / 2);
+    // clear ANY existing traffic in a band around the roadblock so the gap is clean
+    const band = 22;
+    for (let i = this.active.length - 1; i >= 0; i--) {
+      const e = this.active[i];
+      if (Math.abs(e.z - z) < band && (e.type === 'car' || e.type === 'truck' || e.type === 'cone' || e.type === 'barrier')) {
+        e.mesh.visible = false; this.pools[e.poolKey].push(e); this.active.splice(i, 1);
+      }
+    }
+    // block all forward lanes except the gap
+    for (let lane = onc; lane < lanes; lane++) {
       if (lane === gap) continue;
       this.spawnEntity('block', lane, z);
     }
+    // keep the row spawner from immediately stacking traffic onto the block
+    this._nextRowZ = Math.min(this._nextRowZ, z - 40);
     return gap;
   }
 
@@ -128,17 +142,11 @@ export class Traffic {
   // traffic (it would be in now-wrong-direction lanes) and pause spawns briefly
   // so the new layout starts clean — no cars driving the wrong way.
   beginTransition(section) {
-    const clearAheadOf = -40; // keep nearby cars, clear distant ones
-    for (let i = this.active.length - 1; i >= 0; i--) {
-      const e = this.active[i];
-      if (e.z < clearAheadOf && (e.type === 'car' || e.type === 'truck')) {
-        e.mesh.visible = false; this.pools[e.poolKey].push(e); this.active.splice(i, 1);
-      }
-    }
-    // reset the row spawner & push the next row well ahead (a clear "gap")
-    this._nextRowZ = -CFG.VISIBLE_AHEAD * 0.7;
+    // No car clearing (that looked like a "full replacement"). We just reset the
+    // row cursor so new-layout rows begin spawning from the far horizon; existing
+    // traffic scrolls out naturally for a smooth, continuous handover.
+    this._nextRowZ = -CFG.VISIBLE_AHEAD * 0.95;
     this._openLane = undefined;
-    this.laneNextSpawn.fill(-CFG.VISIBLE_AHEAD * 0.7);
   }
 
   setNight(night) {
@@ -198,10 +206,13 @@ export class Traffic {
 
     // fill the other forward lanes with a probability that rises with difficulty
     const d = this.difficulty;
-    const fillP = CFG.ROW_FILL_BASE + (CFG.ROW_FILL_MAX - CFG.ROW_FILL_BASE) * d;
+    const fillP = (CFG.ROW_FILL_BASE + (CFG.ROW_FILL_MAX - CFG.ROW_FILL_BASE) * d) * (this.thin ?? 1);
+    // keep the ramp lane clear for a few rows so NPCs don't hit the ramp
+    let rampLane = -1;
+    if (this._rampLaneRows > 0) { rampLane = this._rampLane; this._rampLaneRows--; }
     for (const lane of fwdLanes) {
-      if (lane === openLane) continue;                 // never block the open lane
-      if (Math.random() > fillP) continue;             // leave some others open too
+      if (lane === openLane || lane === rampLane) continue; // never block these
+      if (Math.random() > fillP) continue;
       this._spawnForwardObstacle(section, lane, z);
     }
 
@@ -216,6 +227,11 @@ export class Traffic {
     const rr = Math.random();
     if (rr < 0.08) {
       this.spawnEntity('ramp', openLane, z);
+      // warning cones leading up to the ramp (signpost it); keeps the lane open
+      this.spawnEntity('cone', openLane, z + 7);
+      this.spawnEntity('cone', openLane, z + 13);
+      this._rampLane = openLane; // NPC rows keep this open next few rows
+      this._rampLaneRows = 3;
     } else if (rr < 0.08 + CFG.PU_SPAWN_CHANCE) {
       this.spawnEntity('powerup', openLane, z, { puType: 'invincible' });
     } else if (section.allowCoins && Math.random() < 0.4) {
@@ -242,6 +258,24 @@ export class Traffic {
     const despawnZ = CFG.VISIBLE_BEHIND + 15;
     for (let i = this.active.length - 1; i >= 0; i--) {
       const e = this.active[i];
+
+      // NPC same-direction cars slow down behind a slower vehicle in their lane
+      // (and flash an indicator). Keeps traffic from clipping through trucks.
+      if (e.type === 'car' && !e.oncoming && !e.knocked) {
+        let aheadSlow = null;
+        for (const o of this.active) {
+          if (o === e || o.oncoming) continue;
+          if ((o.type === 'truck' || o.type === 'car') && o.lane === e.lane) {
+            const gap = o.z - e.z; // ahead = more negative; o ahead of e if o.z < e.z
+            if (gap < 0 && gap > -10 && o.speed < e.speed) { aheadSlow = o; break; }
+          }
+        }
+        if (aheadSlow) {
+          e.speed += (aheadSlow.speed - e.speed) * Math.min(1, dt * 2); // match slower
+          if (e.mesh.userData.headlights) e.mesh.userData.headlights.emissiveIntensity = (Math.sin(performance.now() * 0.012) > 0) ? 1.6 : 0.6; // blinker pulse
+        }
+      }
+
       // relative motion: world moves +Z by playerSpeed; entity also moves
       let rel = playerSpeed;
       if (e.oncoming) rel += e.speed;       // closes faster

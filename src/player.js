@@ -205,35 +205,41 @@ export class Player {
     // centre line does NOT — the player may drive into oncoming lanes (risky!).
     const nLanes = this.maxLane ?? CFG.NUM_LANES;
     const onc = road.oncomingLanes || 0;
-    const firstAllowed = road.medianActive ? onc : 0; // barrier => forward side only
+    // a median barrier blocks the oncoming side — UNLESS you jump high over it
+    const jumpingOverMedian = this.airborne && this.y > 1.1;
+    const firstAllowed = (road.medianActive && !jumpingOverMedian) ? onc : 0;
     let minX = road.laneX(firstAllowed) - CFG.LANE_WIDTH * 0.45;
     let maxX = road.laneX(nLanes - 1) + CFG.LANE_WIDTH * 0.45;
     minX = Math.max(minX, -road.drivableHalf);
     maxX = Math.min(maxX, road.drivableHalf);
     this.minLaneX = minX; this.maxLaneX = maxX;
 
-    // ---- continuous steering with release-snap (vector-runner feel) ----
-    // Holding a direction moves the car continuously across ALL lanes (no lock).
-    // When you LET GO, a SUBTLE magnet eases it to the nearest lane centre.
+    // ---- momentum / drift steering (tunable) ----
+    // Velocity-based: input accelerates lateral velocity, which is damped (grip).
+    // Lower grip / higher accel = more drifty. When you release, a gentle lane
+    // magnet nudges you toward the nearest centre. All values are live-tunable.
     if (this.state === PStates.DRIVE) {
-      const steer = input.steer || 0;           // -1..1 analog (hold = sustained)
+      const T = CFG.TUNE; // live tuning object
+      const steer = input.steer || 0;
       const steering = Math.abs(steer) > 0.08;
 
-      if (steering) {
-        // move the target continuously — never blocked, spans the whole road
-        this.targetX += steer * CFG.STEER_SPEED * dt;
-        this._releaseSettle = false;
-      } else {
-        // released: gently settle to nearest lane centre (subtle aim-assist)
-        const cx = road.laneX(this._nearestLane(road));
-        this.targetX += (cx - this.targetX) * Math.min(1, CFG.LANE_MAGNET * dt);
-      }
-      this.targetX = Math.max(minX, Math.min(maxX, this.targetX));
+      // accelerate toward desired lateral velocity (= steer * max speed)
+      const desiredVx = steer * T.steerMaxVel;
+      this.vx += (desiredVx - this.vx) * Math.min(1, T.steerAccel * dt);
 
-      // critically-damped spring: smooth approach to target
-      const t = 1 - Math.exp(-CFG.STEER_SMOOTH * dt);
-      this.x += (this.targetX - this.x) * t;
-      this.vx = (this.targetX - this.x); // for visual lean only
+      // grip damping (drift): pulls vx toward 0 when not steering
+      if (!steering) {
+        this.vx -= this.vx * Math.min(1, T.grip * dt);
+        // subtle lane magnet on release
+        const cx = road.laneX(this._nearestLane(road));
+        this.vx += (cx - this.x) * T.laneMagnet * dt;
+      }
+
+      this.x += this.vx * dt;
+      // soft walls: bounce velocity back at edges
+      if (this.x < minX) { this.x = minX; if (this.vx < 0) this.vx *= -0.3; }
+      if (this.x > maxX) { this.x = maxX; if (this.vx > 0) this.vx *= -0.3; }
+      this.targetX = this.x; // keep in sync for any external reads
 
       if (this.x < minX) this.x = minX;
       if (this.x > maxX) this.x = maxX;

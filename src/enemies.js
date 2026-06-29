@@ -3,7 +3,7 @@
 // count toward the police collision streak, same as a crash).
 import * as THREE from 'three';
 import { CFG } from './config.js';
-import { makeEnemy, makeBullet } from './assets.js';
+import { makeEnemy, makeGrenade } from './assets.js';
 
 export class Enemies {
   constructor(scene, road, traffic) {
@@ -28,31 +28,30 @@ export class Enemies {
     let c = this.cars.find((x) => !x.mesh.visible);
     if (!c) { const mesh = makeEnemy(); this.group.add(mesh); c = { mesh }; this.cars.push(c); }
     c.mesh.visible = true;
-    // come up from behind in a side lane
+    // approach from BEHIND, then drive AHEAD of the player to attack
     const onc = this.road.oncomingLanes || 0;
     c.lane = onc + Math.floor(Math.random() * (CFG.NUM_LANES - onc));
     c.x = this.road.laneX(c.lane);
-    c.z = CFG.VISIBLE_BEHIND * 0.6 + 6;     // behind, will close into view
+    c.z = CFG.VISIBLE_BEHIND * 0.5;          // start behind, will move ahead
     c.targetX = c.x;
-    c.fireTimer = 1.2 + Math.random();
-    c.hp = 1; c.knocked = false; c.alive = true;
+    c.fireTimer = 2.0 + Math.random() * 1.5;
+    c.knocked = false; c.alive = true;
     c.mesh.scale.set(1, 1, 1);
     c.mesh.position.set(c.x, 0, c.z);
     return c;
   }
 
+  // lob a slow grenade backward toward the player (arcing, dodgeable)
   _fire(c, player) {
-    let b = this.bullets.find((x) => !x.mesh.visible);
-    if (!b) { const mesh = makeBullet(); this.group.add(mesh); b = { mesh }; this.bullets.push(b); }
-    b.mesh.visible = true;
-    b.x = c.x; b.z = c.z - 1.5; b.y = 0.8;
-    // aim toward the player's current position
-    const dz = (0 - b.z);
-    const dist = Math.max(2, Math.abs(dz));
-    b.vx = (player.x - b.x) / dist * CFG.BULLET_SPEED * 0.4;
-    b.vz = -CFG.BULLET_SPEED;              // travels forward toward player (z->0)
-    b.mesh.position.set(b.x, b.y, b.z);
-    b.live = true;
+    let g = this.bullets.find((x) => !x.mesh.visible);
+    if (!g) { const mesh = makeGrenade(); this.group.add(mesh); g = { mesh }; this.bullets.push(g); }
+    g.mesh.visible = true;
+    g.x = c.x; g.z = c.z + 1.5; g.y = 1.0;
+    g.vx = (player.x - c.x) * 0.25;         // slight lead toward player lane
+    g.vz = CFG.GRENADE_SPEED;               // travels BACKWARD toward player (z grows)
+    g.vy = 5.5;                              // arc up then fall
+    g.mesh.position.set(g.x, g.y, g.z);
+    g.live = true;
   }
 
   update(dt, player, active, onEvent) {
@@ -77,37 +76,36 @@ export class Enemies {
         if (c.z > CFG.VISIBLE_BEHIND + 10) c.mesh.visible = false;
         continue;
       }
-      // close to alongside the player, then pace them
-      const desiredZ = CFG.ENEMY_PACE_DIST;
-      c.z += (desiredZ - c.z) * Math.min(1, dt * 0.8);
-      // weave toward a lane next to the player (not exactly on them)
-      c.targetX += (player.x + (c.x < player.x ? -CFG.LANE_WIDTH : CFG.LANE_WIDTH) - c.targetX) * Math.min(1, dt * 0.6);
-      c.x += (c.targetX - c.x) * Math.min(1, dt * 2);
+      // drive AHEAD of the player (negative z = in front) and weave to their lane
+      const desiredZ = -CFG.ENEMY_LEAD_DIST;
+      c.z += (desiredZ - c.z) * Math.min(1, dt * 0.7);
+      c.targetX += (player.x - c.targetX) * Math.min(1, dt * 0.5);
+      c.x += (c.targetX - c.x) * Math.min(1, dt * 1.8);
       c.mesh.position.set(c.x, 0, c.z);
 
-      // shooting
+      // lob a grenade back at the player once they're ahead & in range
       c.fireTimer -= dt;
-      if (c.fireTimer <= 0 && Math.abs(c.z) < 30) {
+      if (c.fireTimer <= 0 && c.z < -3 && c.z > -50) {
         this._fire(c, player);
-        c.fireTimer = CFG.ENEMY_FIRE_INTERVAL * (0.7 + Math.random() * 0.6);
+        c.fireTimer = CFG.ENEMY_FIRE_INTERVAL * (0.8 + Math.random() * 0.6);
         onEvent?.('shoot', c);
       }
-
-      // pulse the red accent
       if (c.mesh.userData.enemyAccent) c.mesh.userData.enemyAccent.material.emissiveIntensity = 0.4 + Math.sin(performance.now() * 0.01) * 0.3;
     }
 
-    // ---- bullets ----
-    for (const b of this.bullets) {
-      if (!b.mesh.visible) continue;
-      b.x += b.vx * dt; b.z += b.vz * dt;
-      b.mesh.position.set(b.x, b.y, b.z);
-      // hit player?
-      if (b.live && Math.abs(b.z) < CFG.CAR_HALF_L && Math.abs(b.x - player.x) < CFG.CAR_HALF_W + 0.3) {
-        b.live = false; b.mesh.visible = false;
-        if (!player.isInvuln() && !(player.hasInvincible && player.hasInvincible())) onEvent?.('bulletHit', b);
+    // ---- grenades (arc through the air toward the player) ----
+    for (const g of this.bullets) {
+      if (!g.mesh.visible) continue;
+      g.x += g.vx * dt; g.z += g.vz * dt; g.vy -= 9 * dt; g.y += g.vy * dt;
+      if (g.y < 0.25) { g.y = 0.25; g.vy = 0; }
+      g.mesh.position.set(g.x, g.y, g.z);
+      g.mesh.rotation.x += dt * 6; g.mesh.rotation.z += dt * 4;
+      // hit player? (grenade near ground level & overlapping)
+      if (g.live && Math.abs(g.z) < CFG.CAR_HALF_L + 0.5 && Math.abs(g.x - player.x) < CFG.CAR_HALF_W + 0.4 && g.y < 1.4) {
+        g.live = false; g.mesh.visible = false;
+        if (!player.isInvuln() && !(player.hasInvincible && player.hasInvincible())) onEvent?.('grenadeHit', g);
       }
-      if (b.z > CFG.VISIBLE_BEHIND + 4 || b.z < -CFG.VISIBLE_AHEAD) { b.mesh.visible = false; }
+      if (g.z > CFG.VISIBLE_BEHIND + 4) { g.mesh.visible = false; }
     }
   }
 
@@ -115,7 +113,8 @@ export class Enemies {
   checkRam(player) {
     for (const c of this.cars) {
       if (!c.mesh.visible || c.knocked) continue;
-      if (Math.abs(c.z) < (CFG.CAR_HALF_L + 1.6) && Math.abs(c.x - player.x) < (CFG.CAR_HALF_W + 0.9)) {
+      // they drive ahead — catch up to ram them off the road
+      if (Math.abs(c.z) < (CFG.CAR_HALF_L + 1.8) && Math.abs(c.x - player.x) < (CFG.CAR_HALF_W + 1.0)) {
         c.knocked = true; c.alive = false;
         const side = (player.x < c.x) ? 1 : -1;
         c.kvx = side * (8 + Math.random() * 6); c.kvy = 4 + Math.random() * 3; c.kspin = (Math.random() - 0.5) * 14;

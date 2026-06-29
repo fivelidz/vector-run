@@ -7,6 +7,7 @@ const DEFAULT = {
   car: 'classic',
   owned: ['classic'],
   settings: { steer: 'free', sound: true, music: true, quality: 'high' },
+  tune: { steerMaxVel: 11, steerAccel: 6.0, grip: 4.5, laneMagnet: 2.2 },
 };
 
 let data = load();
@@ -14,7 +15,12 @@ let data = load();
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT, ...JSON.parse(raw), settings: { ...DEFAULT.settings, ...(JSON.parse(raw).settings || {}) } };
+    if (raw) {
+      const j = JSON.parse(raw);
+      return { ...DEFAULT, ...j,
+        settings: { ...DEFAULT.settings, ...(j.settings || {}) },
+        tune: { ...DEFAULT.tune, ...(j.tune || {}) } };
+    }
   } catch (e) {}
   return structuredClone(DEFAULT);
 }
@@ -43,4 +49,6 @@ export const Save = {
     return false;
   },
   setSetting(k, v) { data.settings[k] = v; save(); },
+  get tune() { return data.tune; },
+  setTune(k, v) { data.tune[k] = v; save(); },
 };

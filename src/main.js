@@ -88,6 +88,15 @@ class Game {
     this.menus.onCarChange = () => { this._buildPlayer(); this.player.mesh.position.z = -2; };
     this.menus.onSteerChange = (m) => this.input.setMode(m);
     this.menus.onQualityChange = (q) => this.engine.setQuality(q);
+    this.menus.onTuneChange = (k, v) => { CFG.TUNE[k] = v; };
+    this.menus.onTuneReset = () => {
+      const def = { steerMaxVel: 11, steerAccel: 6.0, grip: 4.5, laneMagnet: 2.2 };
+      Object.assign(CFG.TUNE, def);
+      for (const k in def) Save.setTune(k, def[k]);
+      // refresh slider positions
+      const ids = { 'tune-accel': 'steerAccel', 'tune-grip': 'grip', 'tune-vel': 'steerMaxVel', 'tune-magnet': 'laneMagnet' };
+      for (const id in ids) { const el = document.getElementById(id); if (el) el.value = def[ids[id]]; }
+    };
 
     this.input.bindButtons({
       brakeBtn: document.getElementById('btn-brake'),
@@ -108,6 +117,7 @@ class Game {
     this.engine.setQuality(s.quality);
     this.audio.setEnabled(s.sound);
     this.audio.setMusic(s.music);
+    Object.assign(CFG.TUNE, Save.tune); // apply persisted steering feel
   }
 
   startRun() {
@@ -161,6 +171,7 @@ class Game {
     // section (road layout)
     const section = this.director.update(p.distance);
     this.traffic.setDifficulty(this.director.difficulty);
+    this.traffic.thin = this.enemies.cars.some((c) => c.mesh.visible && c.alive) ? CFG.ENEMY_NPC_THIN : 1;
     // detect a layout change (oncoming/median) and transition cleanly:
     // clear far-ahead conflicting traffic + briefly pause spawns so cars never
     // appear to drive the wrong way in a lane that just flipped direction.
@@ -300,17 +311,17 @@ class Game {
     const km = Math.floor(p.distance / 1000);
     if (km > (this._lastKm || 0)) { this._lastKm = km; this.score += 200; this.hud.combo(km + ' KM! +200', '#ffd23f'); }
 
-    // enemy gang cars (shoot at you; you can ram them off the road)
+    // enemy gang cars (drive ahead, lob grenades; ram them off the road)
     this.enemies.update(dt, p, this.police.active, (ev, c) => {
       if (ev === 'shoot') this.audio.click?.();
-      if (ev === 'bulletHit') {
-        // a bullet connected: small spin + counts toward the bust streak
-        if (p.impact('light', (Math.random() < 0.5 ? -1 : 1), 0)) {}
-        this.engine.addShake(0.25);
-        this.fx.sparks(p.x, 0.9, 0, 10, 0xffd23f);
-        this.audio.crash(false);
-        const res = this.police.registerCollision();
-        if (res === 'wreck') this._gameOver('busted');
+      if (ev === 'grenadeHit') {
+        // grenade explosion: spin-out + counts as a crash toward wanted
+        p.impact('heavy', (Math.random() < 0.5 ? -1 : 1), 0);
+        this.engine.addShake(0.6);
+        this.fx.sparks(p.x, 0.9, 0, 22, 0xff7d2a);
+        this.fx.smoke(p.x, 0.5, 0, 12);
+        this.audio.crash(true);
+        this.police.registerCollision();
       }
     });
     // ram an enemy car off the road for points

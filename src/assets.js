@@ -142,32 +142,34 @@ export function makeCar(color = PAL.player, kind = 'car') {
 export function addHeadlightBeams(grp, dims) {
   const W = dims.W ?? 1.5, L = dims.L ?? 3.4, FWD = dims.FWD ?? -1;
   const beams = new THREE.Group();
+  const mats = [];
+  // two long, low, tapering light cones from each headlight (volumetric look)
   const beamMat = new THREE.MeshBasicMaterial({
-    color: 0xfff4c0, transparent: true, opacity: 0.0, depthWrite: false,
+    color: 0xfff2c0, transparent: true, opacity: 0, depthWrite: false,
     blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   });
-  // two thin cones flaring forward & down from the headlights
+  mats.push(beamMat);
   for (const sx of [-1, 1]) {
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.9, L * 1.8, 12, 1, true), beamMat);
-    // point the cone forward (-Z) and tilt slightly down
-    cone.rotation.x = FWD * Math.PI / 2;
-    cone.position.set(sx * W * 0.3, 0.55, FWD * (L * 1.0));
-    cone.scale.set(0.8, 1, 0.45);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(1.0, L * 3.0, 16, 1, true), beamMat);
+    cone.rotation.x = FWD * Math.PI / 2;          // lay it along the road, forward
+    cone.position.set(sx * W * 0.28, 0.5, FWD * (L * 1.4));
+    cone.scale.set(0.85, 1, 0.32);                // wide & flat = headlight spread
     beams.add(cone);
   }
-  // bright ground pool (radial gradient via a faded plane)
-  const pool = new THREE.Mesh(
-    new THREE.CircleGeometry(L * 0.9, 18),
-    new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })
-  );
-  pool.rotation.x = -Math.PI / 2;
-  pool.scale.set(0.7, 1.3, 1);
-  pool.position.set(0, 0.05, FWD * (L * 1.0));
-  beams.add(pool);
-  beams.visible = false;            // hidden until night (start clean in daytime)
+  // two bright elliptical ground pools where the beams land
+  for (const sx of [-1, 1]) {
+    const pm = new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
+    mats.push(pm);
+    const pool = new THREE.Mesh(new THREE.CircleGeometry(L * 0.7, 20), pm);
+    pool.rotation.x = -Math.PI / 2;
+    pool.scale.set(0.55, 1.6, 1);
+    pool.position.set(sx * W * 0.3, 0.05, FWD * (L * 1.3));
+    beams.add(pool);
+  }
+  beams.visible = false;
   grp.add(beams);
   grp.userData.beams = beams;
-  grp.userData.beamMats = [beamMat, pool.material];
+  grp.userData.beamMats = mats; // [cone, poolL, poolR]
 }
 
 // toggle a car's night lighting (beams + brighter lights)
@@ -175,8 +177,8 @@ export function setCarNight(carMesh, night) {
   const u = carMesh.userData;
   if (u.beams) u.beams.visible = night;
   if (u.beamMats) {
-    u.beamMats[0].opacity = 0.08;  // cone glow (subtle)
-    u.beamMats[1].opacity = 0.4;   // ground pool
+    u.beamMats[0].opacity = 0.07;                 // cones (subtle volumetric)
+    for (let i = 1; i < u.beamMats.length; i++) u.beamMats[i].opacity = 0.5; // ground pools
   }
   if (u.headMat) u.headMat.emissiveIntensity = night ? 2.2 : 1.0;
   if (u.tailMat) u.tailMat.emissiveIntensity = night ? 1.6 : 0.8;
@@ -212,11 +214,18 @@ export function makeEnemy() {
   return grp;
 }
 
-// small projectile (enemy bullet)
-export function makeBullet() {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8),
-    new THREE.MeshStandardMaterial({ color: 0xffd23f, emissive: 0xffaa00, emissiveIntensity: 1.2 }));
-  return m;
+// slow grenade projectile (arcs through the air, dodgeable)
+export function makeGrenade() {
+  const grp = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0x3a4a2a, emissive: 0x223311, emissiveIntensity: 0.3, roughness: 0.6 }));
+  grp.add(body);
+  // blinking red tip
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 6),
+    new THREE.MeshStandardMaterial({ color: 0xff2222, emissive: 0xff0000, emissiveIntensity: 1.5 }));
+  tip.position.y = 0.28; grp.add(tip);
+  grp.userData.tip = tip;
+  return grp;
 }
 
 // ---- Cone ----

@@ -6,18 +6,26 @@ import * as THREE from 'three';
 import { CFG, PAL } from './config.js';
 import { flat, box } from './assets.js';
 
-// procedural noise texture (asphalt speckle / grass mottle) via canvas
-function noiseTexture(base, speck, density = 0.5, size = 128) {
+// procedural noise texture (asphalt speckle / grass mottle) via canvas.
+// Returns a white-ish texture with darker AND lighter specks so it stays
+// visible after the material colour tint multiplies it.
+function noiseTexture(density = 0.6, size = 128) {
   const cv = document.createElement('canvas'); cv.width = cv.height = size;
   const ctx = cv.getContext('2d');
-  ctx.fillStyle = base; ctx.fillRect(0, 0, size, size);
-  const n = Math.floor(size * size * density * 0.12);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size); // white base = full tint
+  const n = Math.floor(size * size * density * 0.25);
   for (let i = 0; i < n; i++) {
     const x = Math.random() * size, y = Math.random() * size;
-    const a = 0.04 + Math.random() * 0.12;
-    ctx.fillStyle = `rgba(${speck},${a})`;
-    const r = Math.random() * 1.6 + 0.4;
+    const dark = Math.random() < 0.55;
+    const a = 0.10 + Math.random() * 0.30;
+    ctx.fillStyle = dark ? `rgba(0,0,0,${a})` : `rgba(255,255,255,${a})`;
+    const r = Math.random() * 2.2 + 0.6;
     ctx.fillRect(x, y, r, r);
+  }
+  // a few longer streaks for asphalt "grain"
+  for (let i = 0; i < size * 0.3; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${0.05 + Math.random() * 0.1})`;
+    ctx.fillRect(Math.random() * size, Math.random() * size, 0.8, 4 + Math.random() * 10);
   }
   const tex = new THREE.CanvasTexture(cv);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -51,8 +59,8 @@ export class Road {
     const len = CFG.VISIBLE_AHEAD + CFG.VISIBLE_BEHIND + 40;
 
     // grass base (wide) — mottled texture
-    const grassTex = noiseTexture('#3f7d4f', '20,60,30', 0.7);
-    grassTex.repeat.set(20, len / 8);
+    const grassTex = noiseTexture(0.8);
+    grassTex.repeat.set(24, len / 6);
     const grassMat = flat(PAL.grass, { rough: 1 });
     grassMat.map = grassTex;
     const grass = new THREE.Mesh(
@@ -66,8 +74,8 @@ export class Road {
     this.grassMesh = grass;
 
     // road surface — asphalt texture for a less flat look
-    const roadTex = noiseTexture('#33384a', '0,0,0', 0.8);
-    roadTex.repeat.set(3, len / 6);
+    const roadTex = noiseTexture(0.9);
+    roadTex.repeat.set(4, len / 5);
     const roadMat = flat(PAL.road, { rough: 0.92 });
     roadMat.map = roadTex;
     const road = new THREE.Mesh(
@@ -159,15 +167,27 @@ export class Road {
     // hills handled by terrain (they sit at the horizon -> far transition)
   }
 
-  // rebuild scenery props to match the theme's prop palette
+  // Set the CURRENT theme for prop spawning. We do NOT rebuild existing props —
+  // instead, props adopt the new theme as they recycle at the horizon, so the
+  // change sweeps in from the distance as you drive into the new biome.
   setTheme(theme) {
     this.theme = theme;
-    if (this.scenery) {
-      for (const s of this.scenery) this.group.remove(s);
+    if (!this.scenery) { // first call: build initial set
+      this.scenery = [];
+      const len = CFG.VISIBLE_AHEAD + CFG.VISIBLE_BEHIND + 40;
+      this._buildScenery(len, theme.props || ['lamp', 'tree', 'sign'], theme.night);
     }
-    this.scenery = [];
-    const len = CFG.VISIBLE_AHEAD + CFG.VISIBLE_BEHIND + 40;
-    this._buildScenery(len, theme.props || ['lamp', 'tree', 'sign'], theme.night);
+  }
+
+  // replace a recycled prop's visual with one from the current theme
+  _reskinProp(grp) {
+    const t = this.theme || { props: ['lamp', 'tree', 'sign'], night: false };
+    const idx = grp.userData.slot || 0;
+    const kind = (t.props || ['lamp'])[(idx * 13) % (t.props || ['lamp']).length];
+    // clear children, rebuild
+    while (grp.children.length) grp.remove(grp.children[0]);
+    const fresh = makeProp(kind, grp.userData.side || 1, t.night);
+    while (fresh.children.length) grp.add(fresh.children[0]);
   }
 
   _buildScenery(len, palette = ['lamp', 'tree', 'sign'], night = false) {
@@ -180,7 +200,7 @@ export class Road {
         const extra = kind === 'building' ? 9 + (i % 3) * 3 : 4.5 + (i % 2) * 1.5;
         const ud = grp.userData;
         grp.position.set(side * (this.halfRoad + extra), 0, 0);
-        grp.userData = { ...ud, baseZ: CFG.VISIBLE_BEHIND - i * period, period, total: count * period };
+        grp.userData = { ...ud, baseZ: CFG.VISIBLE_BEHIND - i * period, period, total: count * period, slot: i, side };
         this.group.add(grp);
         this.scenery.push(grp);
       }
@@ -225,13 +245,20 @@ export class Road {
     if (this._roadTex) this._roadTex.offset.y = (this.scrollZ / 6) % 1;
     const wrap = (obj) => {
       let z = obj.userData.baseZ + (this.scrollZ % obj.userData.total);
-      // bring into visible band
       while (z > CFG.VISIBLE_BEHIND + 5) z -= obj.userData.total;
       while (z < -CFG.VISIBLE_AHEAD - 5) z += obj.userData.total;
       obj.position.z = z;
+      return z;
     };
     for (const d of this.dashes) wrap(d);
-    for (const s of this.scenery) wrap(s);
+    for (const s of this.scenery) {
+      const z = wrap(s);
+      // when a prop recycles to the far horizon, reskin it to the current theme
+      if (s.userData._lastZ !== undefined && z < s.userData._lastZ - 50) {
+        this._reskinProp(s);
+      }
+      s.userData._lastZ = z;
+    }
   }
 }
 

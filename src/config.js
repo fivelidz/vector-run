@@ -21,10 +21,15 @@ export const CFG = {
   BRAKE_MULT: 0.55,         // brake target multiplier
 
   // ---- Lateral steering (target-X spring model, vector-runner feel) ----
-  STEER_SPEED: 17,          // m/s the steering target moves under full analog input
-  STEER_SMOOTH: 12,         // spring stiffness: car eases to target (snappy but smooth)
-  LANE_MAGNET: 3.0,         // SUBTLE aim-assist: pull toward nearest lane on release
-  GRIP: 1.0,                // 1 = full grip; oil reduces it
+  // Live-tunable steering (adjust via Settings sliders; persisted to save).
+  // Drifty feel = lower grip, lower steerAccel. Twitchy = higher both.
+  TUNE: {
+    steerMaxVel: 11,        // max lateral speed (m/s) at full steer
+    steerAccel: 6.0,        // how fast you reach that speed (lower = floatier)
+    grip: 4.5,              // how fast lateral velocity bleeds off (lower = more drift)
+    laneMagnet: 2.2,        // release aim-assist strength toward nearest lane
+  },
+  GRIP: 1.0,
   // legacy
   STEER_ACCEL: 46, STEER_MAX: 13, STEER_DAMP: 7, LANE_CENTER_PULL: 8,
   LANE_SNAP_PULSE: 9.5, LANE_SNAP_TIME: 0.14, FREE_STEER_ACCEL: 46, FREE_STEER_MAX: 13,
@@ -84,11 +89,12 @@ export const CFG = {
 
   // ---- Enemy (gang) cars ----
   ENEMY_FIRST_DELAY: 25,    // seconds before enemies can first appear
-  ENEMY_INTERVAL: 14,       // seconds between enemy spawns
+  ENEMY_INTERVAL: 16,       // seconds between enemy spawns
   ENEMY_MAX: 2,             // max enemy cars at once
-  ENEMY_PACE_DIST: 6,       // metres they pace alongside/behind the player
-  ENEMY_FIRE_INTERVAL: 2.2, // seconds between shots
-  BULLET_SPEED: 55,         // bullet travel speed (m/s)
+  ENEMY_LEAD_DIST: 10,      // metres they drive AHEAD of the player to attack
+  ENEMY_FIRE_INTERVAL: 2.6, // seconds between grenade lobs
+  GRENADE_SPEED: 9,         // grenade backward speed (slow & dodgeable)
+  ENEMY_NPC_THIN: 0.45,     // multiply NPC fill chance while enemies are present
 
   // ---- Power-ups ----
   PU_INVINCIBLE_TIME: 7.0,  // seconds of smash-through invincibility
