@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#10131c" />
+  <title>Vector Run</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <!-- Offline-friendly import map pointing at vendored three.js -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three.module.js",
+      "three/addons/loaders/GLTFLoader.js": "./vendor/GLTFLoader.js",
+      "three/addons/utils/BufferGeometryUtils.js": "./vendor/BufferGeometryUtils.js",
+      "three/addons/geometries/RoundedBoxGeometry.js": "./vendor/RoundedBoxGeometry.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hud-left">
+          <div id="hud-distance">0 m</div>
+          <div id="hud-score">0</div>
+        </div>
+        <div class="hud-center">
+          <div id="hud-stars">☆☆☆☆☆</div>
+          <div id="heatbar"><div id="heatbar-fill"></div></div>
+        </div>
+        <div class="hud-right">
+          <button id="btn-pause" class="icon-btn" aria-label="Pause">❚❚</button>
+        </div>
+      </div>
+
+      <div class="hud-bottom">
+        <button id="btn-brake" class="pedal" aria-label="Brake">BRAKE</button>
+        <div class="hud-center-col">
+          <div id="speedo"><div id="speedo-needle"></div><span id="speedo-val">0</span></div>
+        </div>
+        <button id="btn-jump" class="pedal jump-pedal" aria-label="Jump">JUMP ▲</button>
+      </div>
+
+      <!-- floating combo popup -->
+      <div id="combo-pop"></div>
+      <!-- bust meter -->
+      <div id="bust-meter" class="hidden"><span>BUSTED IN</span><div id="bust-fill"></div></div>
+    </div>
+
+    <!-- MAIN MENU -->
+    <div id="menu" class="overlay">
+      <div class="menu-card">
+        <h1 class="title">VECTOR<span>RUN</span></h1>
+        <p class="tagline">Outrun the law. Don't stop.</p>
+        <button id="btn-play" class="cta">PLAY ▸</button>
+        <div class="menu-row">
+          <button id="btn-cars" class="ghost">CARS</button>
+          <button id="btn-settings" class="ghost">SETTINGS</button>
+        </div>
+        <div class="best">Best: <span id="best-dist">0</span> m &nbsp;·&nbsp; 🪙 <span id="coin-total">0</span></div>
+      </div>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="gameover" class="overlay hidden">
+      <div class="menu-card">
+        <h1 id="go-title" class="title-sm">WRECKED</h1>
+        <div class="go-stats">
+          <div><b id="go-dist">0</b><span>metres</span></div>
+          <div><b id="go-score">0</b><span>score</span></div>
+          <div><b id="go-coins">0</b><span>coins</span></div>
+        </div>
+        <div id="go-best" class="best"></div>
+        <button id="btn-retry" class="cta">RETRY ▸</button>
+        <button id="btn-menu" class="ghost">MENU</button>
+      </div>
+    </div>
+
+    <!-- PAUSE -->
+    <div id="pause" class="overlay hidden">
+      <div class="menu-card">
+        <h1 class="title-sm">PAUSED</h1>
+        <button id="btn-resume" class="cta">RESUME ▸</button>
+        <button id="btn-quit" class="ghost">QUIT TO MENU</button>
+      </div>
+    </div>
+
+    <!-- CAR SELECT -->
+    <div id="cars" class="overlay hidden">
+      <div class="menu-card wide">
+        <h1 class="title-sm">CARS</h1>
+        <div id="car-grid"></div>
+        <button id="btn-cars-back" class="ghost">BACK</button>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div id="settings" class="overlay hidden">
+      <div class="menu-card">
+        <h1 class="title-sm">SETTINGS</h1>
+        <label class="opt"><span>Sound</span><input type="checkbox" id="opt-sound" checked /></label>
+        <label class="opt"><span>Music</span><input type="checkbox" id="opt-music" checked /></label>
+        <label class="opt"><span>Quality</span>
+          <select id="opt-quality"><option value="high">High</option><option value="med">Medium</option><option value="low">Low</option></select>
+        </label>
+        <button id="btn-settings-back" class="ghost">BACK</button>
+      </div>
+    </div>
+
+    <div id="loading" class="overlay">
+      <div class="spinner"></div>
+      <div class="load-txt">Revving up…</div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

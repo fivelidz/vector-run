@@ -1,0 +1,9 @@
+{
+  "player": "player_car.glb",
+  "sedan": "traffic_sedan.glb",
+  "hatch": "traffic_hatchback.glb",
+  "truck": "truck.glb",
+  "police": "police_cruiser.glb",
+  "cone": "cone.glb",
+  "barrier": "barrier.glb"
+}

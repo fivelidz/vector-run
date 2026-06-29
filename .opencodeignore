@@ -1,0 +1,17 @@
+# Keep qalcode/opencode snapshots small — never send big binaries to the model
+vendor/three.module.js
+vendor/GLTFLoader.js
+vendor/BufferGeometryUtils.js
+assets/models/*.glb
+assets/models/*.gltf
+assets/models/*.bin
+assets/audio/*.mp3
+assets/audio/*.ogg
+assets/audio/*.wav
+*.png
+*.jpg
+node_modules/
+tools/node_modules/
+.meshy_state/
+assets/models/_meshy_state.json
+docs/*.png

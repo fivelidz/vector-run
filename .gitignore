@@ -1,0 +1,13 @@
+# test artifacts
+docs/*.png
+tools/node_modules/
+node_modules/
+
+# meshy state (kept out of repo; regenerate via tools/meshy_assets.py)
+assets/models/_meshy_state.json
+
+# os/editor
+.DS_Store
+*.log
+/tmp/
+.opencode/
