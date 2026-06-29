@@ -36,7 +36,8 @@ export class Enemies {
     c.z = CFG.VISIBLE_BEHIND * 0.5;          // start behind, will move ahead
     c.targetX = c.x;
     c.fireTimer = 2.0 + Math.random() * 1.5;
-    c.knocked = false; c.alive = true;
+    c.knocked = false; c.alive = true; c.age = 0;
+    c.slot = this.cars.filter((x) => x !== c && x.mesh.visible && x.alive).length; // unique lead slot
     c.ky = 0; c.kvx = 0; c.kvy = 0; c.kspin = 0;
     c.mesh.scale.set(1, 1, 1);
     c.mesh.rotation.set(0, 0, 0);      // reset any tumble from a previous life
@@ -81,11 +82,23 @@ export class Enemies {
         if (c.z > CFG.VISIBLE_BEHIND + 10) c.mesh.visible = false;
         continue;
       }
-      // drive AHEAD of the player (negative z = in front) and weave to their lane
-      const desiredZ = -CFG.ENEMY_LEAD_DIST;
-      c.z += (desiredZ - c.z) * Math.min(1, dt * 0.7);
-      c.targetX += (player.x - c.targetX) * Math.min(1, dt * 0.5);
+      // Drive ahead, but DRIFT BACK toward the player over time so they can be
+      // caught & rammed. Stagger enemies by slot so they never share a spot.
+      const slot = c.slot ?? 0;
+      c.age = (c.age || 0) + dt;
+      const desiredZ = -CFG.ENEMY_LEAD_DIST + slot * 6 - Math.min(9, c.age * 0.7);
+      c.z += (desiredZ - c.z) * Math.min(1, dt * 0.5);
+      const laneOff = slot === 0 ? 0 : (slot % 2 ? CFG.LANE_WIDTH : -CFG.LANE_WIDTH);
+      c.targetX += ((player.x + laneOff) - c.targetX) * Math.min(1, dt * 0.5);
       c.x += (c.targetX - c.x) * Math.min(1, dt * 1.8);
+      // separation from other enemies (no overlap)
+      for (const o of this.cars) {
+        if (o === c || !o.mesh.visible || o.knocked) continue;
+        if (Math.abs(c.z - o.z) < CFG.CAR_HALF_L * 2 && Math.abs(c.x - o.x) < CFG.CAR_HALF_W * 2) {
+          c.x += Math.sign((c.x - o.x) || 1) * 0.08;
+          c.z += Math.sign((c.z - o.z) || -1) * 0.1;
+        }
+      }
       c.mesh.position.set(c.x, 0, c.z);
 
       // lob a grenade back at the player once they're ahead & in range

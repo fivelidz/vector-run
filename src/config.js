@@ -120,7 +120,7 @@ export const CFG = {
 
 // Cartoony palette
 export const PAL = {
-  road:       0x33384a,
+  road:       0x53596b,
   roadLine:   0xf4d35e,
   roadEdge:   0xe8e8ec,
   shoulder:   0x2a2f3d,

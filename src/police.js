@@ -94,31 +94,32 @@ export class Police {
       for (let i = wantCruisers; i < live.length; i++) live[i].mesh.visible = false;
     }
 
-    // ---- cruiser AI: tail the player, slower, NEVER collide/overtake ----
-    // Police have a top speed. The faster the player drives, the further the
-    // cops fall back (and eventually lose you). Police close in when you slow.
-    // relative closing speed (m/s): positive = cops gain, negative = cops drop back
-    const closing = (CFG.POLICE_MAX_SPEED - player.speed);
+    // ---- cruiser AI (Temple-Run pacing) ----
+    // The cop MATCHES the player's speed and holds a tail distance that closes
+    // when you crash (heat high) and eases out a touch when you're clean — but
+    // it never just falls away or lingers off-screen. You can't trivially outrun
+    // it; you escape only by staying clean for the whole window.
+    const minGap = CFG.CAR_HALF_L * 2 + 0.6;
+    // desired tail distance: closer right after a crash, a bit further when calm
+    const sinceHit2 = this.time - this.lastHitTime;
+    const pressure = Math.max(0, 1 - sinceHit2 / CFG.COLLISION_WINDOW); // 1 just after hit -> 0
+    const desiredTail = minGap + (CFG.POLICE_TAIL_DIST - minGap) * (1 - pressure);
     let anyContact = false;
     for (const c of this.cruisers) {
       if (!c.mesh.visible) continue;
-      // integrate the gap directly with the speed difference (feels physical)
-      c.z -= closing * dt;                       // closing>0 -> z decreases (gain)
-      c.z += (CFG.POLICE_TAIL_DIST - c.z) * Math.min(1, dt * CFG.POLICE_CLOSE_RATE * 0.4);
-      // never overlap the player — keep a full car-length behind (nudge, not through)
-      const minGap = CFG.CAR_HALF_L * 2 + 0.6;
+      // ease the gap toward the desired tail (always keeps pace, no runaway)
+      c.z += (desiredTail - c.z) * Math.min(1, dt * 1.6);
       if (c.z < minGap) c.z = minGap;
-      if (c.z > CFG.VISIBLE_BEHIND) { c.lostTimer = (c.lostTimer || 0) + dt; if (c.lostTimer > 2.5) { c.mesh.visible = false; continue; } }
-      else c.lostTimer = 0;
-      c.targetX += (player.x - c.targetX) * Math.min(1, dt * 1.2);
-      c.x += (c.targetX - c.x) * Math.min(1, dt * 2.2);
+      c.lostTimer = 0;
+      c.targetX += (player.x - c.targetX) * Math.min(1, dt * 1.4);
+      c.x += (c.targetX - c.x) * Math.min(1, dt * 2.4);
       c.mesh.position.set(c.x, 0, c.z);
 
-      // a small nudge wobble when right on the bumper (visual life, no pass-through)
+      // small nudge wobble on the bumper (life, never pass-through)
       if (c.z <= minGap + 0.3) c.mesh.position.x += Math.sin(this.time * 20) * 0.04;
 
-      // contact = cop on your bumper in your lane (only possible when slow)
-      if (c.z < minGap + 1.0 && Math.abs(c.x - player.x) < CFG.CAR_HALF_W + 0.8) anyContact = true;
+      // contact = cop on your bumper in your lane while at high pressure
+      if (c.z < minGap + 1.0 && Math.abs(c.x - player.x) < CFG.CAR_HALF_W + 0.8 && pressure > 0.5) anyContact = true;
 
       const lb = c.mesh.userData.lightbar;
       if (lb) {

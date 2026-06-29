@@ -15,7 +15,7 @@ import { Audio } from './audio.js';
 import { HUD } from './hud.js';
 import { Menus } from './menus.js';
 import { Save } from './save.js';
-import { tryLoadGLB, setCarNight } from './assets.js';
+import { tryLoadGLB, setCarNight, makeExitSign } from './assets.js';
 
 const GS = { MENU: 'menu', PLAY: 'play', PAUSE: 'pause', OVER: 'over' };
 
@@ -34,6 +34,11 @@ class Game {
     this.traffic = new Traffic(this.engine.scene, this.road);
     this.police = new Police(this.engine.scene, this.road, this.traffic);
     this.enemies = new Enemies(this.engine.scene, this.road, this.traffic, this.police);
+
+    // overhead EXIT sign (reused for exit events)
+    this.exitSign = makeExitSign(this.road.halfRoad);
+    this.exitSign.visible = false;
+    this.engine.scene.add(this.exitSign);
 
     this.player = null; // built on play (uses chosen car color)
 
@@ -133,6 +138,10 @@ class Game {
     this._night = false;
     this._lastOncoming = 0; this._lastMedian = false;
     this._lastKm = 0;
+    this._exit = null;                    // active exit event
+    this._nextExitAt = 700 + Math.random() * 500; // distance of first exit prompt
+    this._desertUntil = 0;                // distance until which desert area lasts
+    this.traffic.desert = false;
     this.hud.clearWanted();
     this.score = 0; this.runCoins = 0; this.comboMult = 1; this.comboTimer = 0;
     this._acc = 0; this._last = performance.now(); // fresh clock for the run
@@ -201,6 +210,16 @@ class Game {
       onLand: (x) => { this.fx.smoke(x, 0.2, 0, 10); this.engine.addShake(0.18); this.audio.land?.(); },
     });
     const distDelta = p.distance - before;
+
+    // tyre tracks: drop skid marks when steering hard or braking
+    this.fx.updateTracks(distDelta);
+    if ((Math.abs(p.vx) > 6 || this.input.brake) && p.state === 'drive' && !p.airborne) {
+      this._trackTimer = (this._trackTimer || 0) - distDelta;
+      if (this._trackTimer <= 0) { this.fx.dropTrack(p.x, p.vx); this._trackTimer = 1.4; }
+    }
+
+    // exit-lane events (Temple-Run style branch into new areas)
+    this._updateExits(distDelta, p);
 
     // scroll road & spawn/move traffic
     this.road.update(distDelta);
@@ -278,18 +297,30 @@ class Game {
         }
       },
       onKnock: (e, side) => {
-        // smash a cone/barrier aside: knock it off, small slow, points, no spin
-        e.knocked = true;
-        e.knockVX = side * (6 + Math.random() * 5);
-        e.knockVY = 4 + Math.random() * 3;
-        e.knockSpin = (Math.random() - 0.5) * 12;
-        p.speed *= 0.94;
-        const pts = e.type === 'barrier' ? 60 : 30;
-        this.score += pts;
-        this.fx.sparks(e.x, 0.6, e.z, e.type === 'barrier' ? 14 : 8, e.type === 'barrier' ? 0xff7d5d : 0xffae42);
-        this.engine.addShake(0.15);
-        this.audio.crash(false);
-        this.hud.combo('+' + pts, '#ffae42');
+        if (e.type === 'barrier') {
+          // SCRAPE a barrier: shower of sparks + screech, NO slowdown, small score.
+          // (debounced so a sustained scrape doesn't spam) — barrier stays put.
+          e.hit = false; // allow repeated scraping along its length
+          const now = performance.now();
+          if (now - (this._lastScrape || 0) > 90) {
+            this._lastScrape = now;
+            this.score += 5;
+            this.fx.sparks(p.x + side * 0.7, 0.5, 0, 6, 0xffd23f);
+            this.audio.screech?.();
+            this.engine.addShake(0.06);
+          }
+        } else {
+          // cone: knock it aside (+points, tiny slow)
+          e.knocked = true;
+          e.knockVX = side * (6 + Math.random() * 5);
+          e.knockVY = 4 + Math.random() * 3;
+          e.knockSpin = (Math.random() - 0.5) * 12;
+          p.speed *= 0.97;
+          this.score += 30;
+          this.fx.sparks(e.x, 0.6, e.z, 8, 0xffae42);
+          this.audio.crash(false);
+          this.hud.combo('+30', '#ffae42');
+        }
       },
       onClear: (e) => {
         // sailed over an obstacle: stylish bonus + small combo bump
@@ -359,6 +390,55 @@ class Game {
       distance: p.distance, score: this.score, speed: p.speed,
       heat: this.police.heat, stars: this.police.stars, bust: this.police.bust,
     });
+  }
+
+  // EXIT events: a sign appears; be in the exit lane (far right) when you reach
+  // it to branch into a new area (desert). Miss it and you stay on the highway.
+  _updateExits(distDelta, p) {
+    // end the desert area after its stretch
+    if (this.traffic.desert && p.distance > this._desertUntil) {
+      this.traffic.desert = false;
+      this.terrain.forceTheme?.(null); // back to normal cycling
+      this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
+    }
+
+    // schedule a new exit
+    if (!this._exit && p.distance > this._nextExitAt && !this.traffic.desert) {
+      const exitLane = CFG.NUM_LANES - 1; // far-right lane
+      this._exit = { lane: exitLane, z: -CFG.VISIBLE_AHEAD * 0.95, announced: false, taken: false };
+      this.exitSign.position.set(this.road.laneX(exitLane), 0, this._exit.z);
+      this.exitSign.visible = true;
+      this.hud.combo('EXIT AHEAD → KEEP RIGHT', '#5dff9b');
+    }
+
+    if (this._exit) {
+      const e = this._exit;
+      e.z += distDelta;
+      this.exitSign.position.z = e.z;
+      // pulse the arrow
+      if (this.exitSign.userData.arrow) this.exitSign.userData.arrow.position.y = 6.9 + Math.sin(performance.now() * 0.006) * 0.2;
+
+      // decision point: when the sign reaches the player (wide window for high speed)
+      if (!e.taken && e.z > -6) {
+        e.taken = true;
+        const inLane = Math.abs(p.x - this.road.laneX(e.lane)) < CFG.LANE_WIDTH * 0.7;
+        if (inLane) {
+          // took the exit -> desert area for a stretch
+          this.traffic.desert = true;
+          this._desertUntil = p.distance + 900;
+          this.terrain.forceTheme?.('sunset'); // sandy desert palette
+          this.road.triggerIntersection?.();
+          this.hud.combo('EXIT TAKEN! 🏜️ DESERT', '#ffb36b');
+          this.score += 300;
+        }
+      }
+      // despawn the sign after it passes
+      if (e.z > CFG.VISIBLE_BEHIND + 8) {
+        this.exitSign.visible = false;
+        this._exit = null;
+        this._nextExitAt = p.distance + 900 + Math.random() * 700;
+      }
+    }
   }
 
   _loop(now) {

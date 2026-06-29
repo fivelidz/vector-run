@@ -44,15 +44,18 @@ export function checkCollisions(player, traffic, handlers) {
         }
       }
 
+      const sideSign = (px < e.x) ? -1 : 1; // spin away from contact
+
+      // barrier: SCRAPE — repeatable along its length, no hit-flag, no slowdown
+      if (e.type === 'barrier') { handlers.onKnock?.(e, sideSign); continue; }
+
       if (e.hit) continue;             // already resolved this entity
       e.hit = true;
-
-      const sideSign = (px < e.x) ? -1 : 1; // spin away from contact
 
       // ramp: launches the player into a big jump (no damage)
       if (e.kind === 'ramp') { if (!e.used) { e.used = true; handlers.onRamp?.(e); } continue; }
 
-      // knock-aside obstacles (cones, barriers): smash through, +points, no spin
+      // knock-aside obstacles (cones): smash through, +points, no spin
       if (e.kind === 'knock') { handlers.onKnock?.(e, sideSign); continue; }
 
       let kind = e.kind;

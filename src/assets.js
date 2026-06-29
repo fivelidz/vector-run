@@ -337,6 +337,31 @@ export function makePowerup(type) {
   return grp;
 }
 
+// ---- Big overhead EXIT sign (gantry) ----
+export function makeExitSign(roadHalf) {
+  const grp = new THREE.Group();
+  const beam = box(roadHalf * 2 + 4, 0.4, 0.4, flat(0x44495a, { metal: 0.4 }));
+  beam.position.y = 6; grp.add(beam);
+  for (const sx of [-1, 1]) { const post = box(0.4, 6, 0.4, flat(0x3a3f4d)); post.position.set(sx * (roadHalf + 1.5), 3, 0); grp.add(post); }
+  const panel = box(4.4, 1.8, 0.2, flat(0x1f7a3a, { emissive: 0x0a3318, emissiveIntensity: 0.5 }));
+  panel.position.set(0, 6.9, 0); grp.add(panel);
+  const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.9, 4), flat(0xffd23f, { emissive: 0xffaa00, emissiveIntensity: 1.0 }));
+  arrow.rotation.x = Math.PI; arrow.position.set(0, 6.9, 0.25);
+  grp.add(arrow);
+  grp.userData.arrow = arrow;
+  return grp;
+}
+
+// ---- Rock (desert obstacle) ----
+export function makeRock() {
+  const grp = new THREE.Group();
+  const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.85 + Math.random() * 0.4, 0), flat(0x8a7a5a, { rough: 1 }));
+  r.position.y = 0.5; r.rotation.set(Math.random(), Math.random(), Math.random()); r.castShadow = true;
+  grp.add(r);
+  grp.userData.dims = { W: 1.0, L: 1.0, H: 1.2 };
+  return grp;
+}
+
 // ---- Coin ----
 export function makeCoin() {
   const g = new THREE.CylinderGeometry(0.5, 0.5, 0.12, 16);

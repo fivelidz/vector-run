@@ -3,7 +3,7 @@
 // the player by (playerSpeed - entitySpeed) * dt. Player is the frame of ref.
 import * as THREE from 'three';
 import { CFG, PAL } from './config.js';
-import { makeCar, makeCone, makeBarrier, makeCoin, makePolice, makeRamp, makePowerup, setCarNight, buildModel } from './assets.js';
+import { makeCar, makeCone, makeBarrier, makeCoin, makePolice, makeRamp, makePowerup, makeRock, setCarNight, buildModel } from './assets.js';
 
 const PU_COLORS = { invincible: 0xffd23f, nitro: 0xff5d5d, shield: 0x4ea3ff, magnet: 0x9d6dff };
 
@@ -16,6 +16,7 @@ const TYPES = {
   block:   { w: 1.0, l: 2.1, kind: 'heavy', mesh: 'block' },    // parked cruiser
   ramp:    { w: 1.2, l: 1.6, kind: 'ramp', mesh: 'ramp' },      // launch pad
   powerup: { w: 0.8, l: 0.8, kind: 'powerup', mesh: 'powerup' },// power-up pickup
+  rock:    { w: 0.85, l: 0.85, kind: 'knock', mesh: 'rock' },   // desert obstacle (knock)
 };
 
 export class Traffic {
@@ -26,7 +27,7 @@ export class Traffic {
     scene.add(this.group);
 
     this.active = [];
-    this.pools = { car: [], truck: [], cone: [], barrier: [], coin: [], block: [], ramp: [], powerup: [] };
+    this.pools = { car: [], truck: [], cone: [], barrier: [], coin: [], block: [], ramp: [], powerup: [], rock: [] };
     this.laneNextSpawn = new Array(CFG.NUM_LANES).fill(0); // z threshold per lane
     this.spawnCursor = -CFG.VISIBLE_AHEAD;
 
@@ -54,6 +55,7 @@ export class Traffic {
       else if (poolKey === 'coin') mesh = makeCoin();
       else if (poolKey === 'block') mesh = makePolice();
       else if (poolKey === 'ramp') mesh = makeRamp();
+      else if (poolKey === 'rock') mesh = makeRock();
       else if (poolKey === 'powerup') mesh = makePowerup('invincible');
       this.group.add(mesh);
       e = { mesh, poolKey };
@@ -243,6 +245,13 @@ export class Traffic {
     const d = this.difficulty;
     const sameSp = CFG.TRAFFIC_SPEED_SAME[0] + Math.random() * (CFG.TRAFFIC_SPEED_SAME[1] - CFG.TRAFFIC_SPEED_SAME[0]);
     const r = Math.random();
+    if (this.desert) {
+      // desert area: rocks & the odd truck, fewer cars
+      if (r < 0.5) { this.spawnEntity('rock', lane, z); return; }
+      if (r < 0.62) { this.spawnEntity('truck', lane, z, { speed: sameSp * 0.6 }); return; }
+      this.spawnEntity('car', lane, z, { speed: sameSp });
+      return;
+    }
     if (r < 0.10 + d * 0.05) { this.spawnEntity('truck', lane, z, { speed: sameSp * 0.6 }); return; }
     if (section.allowObstacles && r < 0.30) { this.spawnEntity(Math.random() < 0.6 ? 'cone' : 'barrier', lane, z); return; }
     this.spawnEntity('car', lane, z, { speed: sameSp });

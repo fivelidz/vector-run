@@ -32,6 +32,46 @@ function noiseTexture(density = 0.6, size = 128) {
   return tex;
 }
 
+// richer asphalt: speckle + cracks + patches + faint oil stains (imperfections)
+function asphaltTexture(size = 256) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = size;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, size, size);
+  // fine speckle
+  for (let i = 0; i < size * size * 0.08; i++) {
+    const dark = Math.random() < 0.5;
+    ctx.fillStyle = dark ? `rgba(40,40,46,${0.08 + Math.random() * 0.18})` : `rgba(255,255,255,${0.06 + Math.random() * 0.14})`;
+    const r = Math.random() * 1.8 + 0.5;
+    ctx.fillRect(Math.random() * size, Math.random() * size, r, r);
+  }
+  // cracks (jagged dark polylines)
+  ctx.strokeStyle = 'rgba(20,20,24,0.4)'; ctx.lineWidth = 1;
+  for (let c = 0; c < 10; c++) {
+    ctx.beginPath();
+    let x = Math.random() * size, y = Math.random() * size;
+    ctx.moveTo(x, y);
+    const segs = 4 + (Math.random() * 5 | 0);
+    for (let s = 0; s < segs; s++) { x += (Math.random() - 0.5) * 40; y += (Math.random() - 0.5) * 40; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  // lighter repair patches
+  for (let p = 0; p < 6; p++) {
+    ctx.fillStyle = `rgba(255,255,255,${0.06 + Math.random() * 0.08})`;
+    const w = 20 + Math.random() * 50, h = 20 + Math.random() * 50;
+    ctx.fillRect(Math.random() * size, Math.random() * size, w, h);
+  }
+  // faint dark oil stains
+  for (let o = 0; o < 5; o++) {
+    const x = Math.random() * size, y = Math.random() * size, r = 8 + Math.random() * 18;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(15,15,18,0.22)'); g.addColorStop(1, 'rgba(15,15,18,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 export class Road {
   constructor(scene) {
     this.scene = scene;
@@ -76,9 +116,9 @@ export class Road {
     this.grassMesh = grass;
     this._initVColors(grassGeo, PAL.grass);
 
-    // road surface — vertex-coloured asphalt
-    const roadTex = noiseTexture(0.9);
-    roadTex.repeat.set(4, len / 5);
+    // road surface — vertex-coloured asphalt with imperfections
+    const roadTex = asphaltTexture();
+    roadTex.repeat.set(2, len / 8);
     const roadGeo = new THREE.PlaneGeometry(this.roadW + CFG.ROAD_SHOULDER * 2, len, 1, this._segZ);
     const roadMat = new THREE.MeshStandardMaterial({ map: roadTex, vertexColors: true, roughness: 0.92 });
     const road = new THREE.Mesh(roadGeo, roadMat);

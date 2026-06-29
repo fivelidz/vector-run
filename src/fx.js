@@ -24,6 +24,41 @@ export class FX {
 
     this._data = []; // {x,y,z,vx,vy,vz,life,maxlife,r,g,b,grav}
     for (let i = 0; i < this.max; i++) this._data.push({ life: 0 });
+
+    // ---- tyre tracks (pool of dark quads on the road) ----
+    this._tracks = [];
+    this._trackMax = 90;
+    const trackGeo = new THREE.PlaneGeometry(0.28, 1.4);
+    for (let i = 0; i < this._trackMax; i++) {
+      const m = new THREE.Mesh(trackGeo, new THREE.MeshBasicMaterial({ color: 0x111114, transparent: true, opacity: 0, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.position.y = 0.03; m.visible = false;
+      scene.add(m);
+      this._tracks.push({ mesh: m, z: 0, x: 0, life: 0 });
+    }
+    this._trackIdx = 0;
+  }
+
+  // drop a pair of skid marks behind the player (call while braking/hard steering)
+  dropTrack(x, vx) {
+    for (const off of [-0.45, 0.45]) {
+      const t = this._tracks[this._trackIdx];
+      this._trackIdx = (this._trackIdx + 1) % this._trackMax;
+      t.x = x + off; t.z = 2.0; t.life = t.maxlife = 2.2;
+      t.mesh.position.set(t.x, 0.03, t.z);
+      t.mesh.material.opacity = 0.55;
+      t.mesh.visible = true;
+    }
+  }
+
+  updateTracks(distDelta) {
+    for (const t of this._tracks) {
+      if (t.life <= 0) continue;
+      t.z += distDelta;                       // scroll with the world
+      t.life -= distDelta * 0.02 + 0.016;
+      t.mesh.position.z = t.z;
+      t.mesh.material.opacity = Math.max(0, 0.55 * (t.life / t.maxlife));
+      if (t.life <= 0 || t.z > 50) { t.mesh.visible = false; t.life = 0; }
+    }
   }
 
   _emit(x, y, z, vx, vy, vz, life, color, grav = -9) {

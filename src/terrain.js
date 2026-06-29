@@ -13,42 +13,42 @@ export const THEMES = [
   {
     id: 'day', name: 'Day Plains',
     sky: 0x9fd3ff, fog: 0xbfe0ff, fogNear: 90, fogFar: 210,
-    ground: 0x3f7d4f, groundAlt: 0x4a8a5a, road: 0x33384a,
+    ground: 0x3f7d4f, groundAlt: 0x4a8a5a, road: 0x53596b,
     sunColor: 0xfff4e0, sunInt: 1.15, hemiSky: 0xcfeaff, hemiGround: 0x3a4a32, hemiInt: 0.85, ambInt: 0.25,
     props: ['lamp', 'tree', 'sign'], night: false,
   },
   {
     id: 'sunset', name: 'Sunset Desert',
     sky: 0xffb36b, fog: 0xffc98e, fogNear: 70, fogFar: 190,
-    ground: 0xd9a566, groundAlt: 0xc99356, road: 0x4a4150,
+    ground: 0xd9a566, groundAlt: 0xc99356, road: 0x6a6072,
     sunColor: 0xffd9a0, sunInt: 1.3, hemiSky: 0xffd9a8, hemiGround: 0x8a6a3a, hemiInt: 0.8, ambInt: 0.3,
     props: ['cactus', 'rock', 'sign'], night: false,
   },
   {
     id: 'night', name: 'Night City',
     sky: 0x0c1024, fog: 0x141a33, fogNear: 60, fogFar: 175,
-    ground: 0x1a2030, groundAlt: 0x202840, road: 0x222633,
+    ground: 0x1a2030, groundAlt: 0x202840, road: 0x3a3f4d,
     sunColor: 0x9fb4ff, sunInt: 0.45, hemiSky: 0x2a3358, hemiGround: 0x0a0e1a, hemiInt: 0.55, ambInt: 0.35,
     props: ['building', 'billboard', 'lamp'], night: true,
   },
   {
     id: 'forest', name: 'Deep Forest',
     sky: 0x88c98f, fog: 0x9fd4a6, fogNear: 55, fogFar: 165,
-    ground: 0x2f6438, groundAlt: 0x37713f, road: 0x2e3340,
+    ground: 0x2f6438, groundAlt: 0x37713f, road: 0x4c5160,
     sunColor: 0xe8ffd8, sunInt: 1.0, hemiSky: 0xb8e6bf, hemiGround: 0x24461f, hemiInt: 0.85, ambInt: 0.28,
     props: ['pine', 'tree', 'rock'], night: false,
   },
   {
     id: 'snow', name: 'Snowfield',
     sky: 0xd8e8f5, fog: 0xeaf2fa, fogNear: 60, fogFar: 185,
-    ground: 0xeef4fb, groundAlt: 0xdfe9f4, road: 0x3a4150,
+    ground: 0xeef4fb, groundAlt: 0xdfe9f4, road: 0x5a6173,
     sunColor: 0xffffff, sunInt: 1.05, hemiSky: 0xf0f6ff, hemiGround: 0xc6d4e2, hemiInt: 0.95, ambInt: 0.4,
     props: ['pine', 'rock', 'sign'], night: false,
   },
   {
     id: 'dusk', name: 'Dusk Highway',
     sky: 0x8a5da6, fog: 0xb07db5, fogNear: 70, fogFar: 195,
-    ground: 0x44506a, groundAlt: 0x4c5874, road: 0x32303f,
+    ground: 0x44506a, groundAlt: 0x4c5874, road: 0x504e60,
     sunColor: 0xffb0d0, sunInt: 0.9, hemiSky: 0xc89adf, hemiGround: 0x33304a, hemiInt: 0.75, ambInt: 0.32,
     props: ['building', 'lamp', 'tree'], night: true,
   },
@@ -78,6 +78,7 @@ export class Terrain {
     this.index = 0; this.next = 1; this.blend = 0;
     this.current = THEMES[0];
     this._propThemeId = THEMES[0].id;
+    this._forced = null;
     this._lastBase = 0;
     this._applyInstant(THEMES[0]);
     this.road.setTheme(THEMES[0]);
@@ -87,7 +88,20 @@ export class Terrain {
     return THEMES[Math.floor(dist / THEME_DISTANCE) % THEMES.length];
   }
 
+  // force a specific theme by id (null resumes cycling)
+  forceTheme(id) {
+    if (!id) { this._forced = null; return; }
+    const t = THEMES.find((x) => x.id === id);
+    if (!t) return;
+    this._forced = t; this._propThemeId = t.id; this.current = t;
+    this.road.setTheme(t); this._applyInstant(t);
+  }
+
   update(distance) {
+    if (this._forced) {
+      this._applyBlend(this._forced, this._forced, 0);
+      return { name: this._forced.name, night: this._forced.night };
+    }
     const cycle = distance / THEME_DISTANCE;
     const baseIdx = Math.floor(cycle) % THEMES.length;
     const into = (distance % THEME_DISTANCE); // metres into current theme
