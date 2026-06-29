@@ -126,7 +126,7 @@ class Game {
   }
 
   startRun() {
-    this.audio.init(); this.audio.resume();
+    this.audio.init(); this.audio.resume(); this.audio.startEngine();
     this._buildPlayer();
     this.player.reset();
     this.player.mesh.position.z = 0;
@@ -136,7 +136,7 @@ class Game {
     this.director.reset();
     this.terrain.reset();
     this._night = false;
-    this._lastOncoming = 0; this._lastMedian = false;
+    this._appliedOncoming = 0; this._appliedMedian = false; this._pendingLayout = null;
     this._lastKm = 0;
     this._exit = null;                    // active exit event
     this._nextExitAt = 700 + Math.random() * 500; // distance of first exit prompt
@@ -153,7 +153,8 @@ class Game {
     if (this.state === GS.OVER) return;
     this.overReason = reason;
     this.state = GS.OVER;
-    this.audio.bust();
+    this.audio.stopAll();  // kill engine/siren immediately
+    this.audio.bust();     // single bust sting
     const dist = this.player.distance;
     const isBest = Math.floor(dist) > Save.best;
     Save.recordRun(dist, this.runCoins);
@@ -177,21 +178,31 @@ class Game {
     if (this.input.takeJump()) {
       if (p.jump()) { this.fx.smoke(p.x, 0.3, 0, 8); this.audio.jump?.(); }
     }
-    // section (road layout)
+    // section (road layout). The director picks the NEXT layout, but a layout
+    // CHANGE (oncoming/median flip) is deferred: we announce it with an
+    // intersection that scrolls in, and only APPLY the new layout (clearing
+    // traffic) once that intersection reaches the player — so two-way roads
+    // always begin AFTER the intersection, never abruptly mid-traffic.
     const section = this.director.update(p.distance);
     this.traffic.setDifficulty(this.director.difficulty);
     this.traffic.thin = this.enemies.cars.some((c) => c.mesh.visible && c.alive) ? CFG.ENEMY_NPC_THIN : 1;
-    // detect a layout change (oncoming/median) and transition cleanly:
-    // clear far-ahead conflicting traffic + briefly pause spawns so cars never
-    // appear to drive the wrong way in a lane that just flipped direction.
-    if (section.oncomingLanes !== this._lastOncoming || section.median !== this._lastMedian) {
-      this._lastOncoming = section.oncomingLanes;
-      this._lastMedian = section.median;
-      this.traffic.beginTransition(section);
-      this.hud.combo(section.oncomingLanes > 0 ? '⇅ TWO-WAY AHEAD' : 'ONE-WAY AHEAD', '#ffd23f');
+
+    const layoutChanged = section.oncomingLanes !== this._appliedOncoming || section.median !== this._appliedMedian;
+    if (layoutChanged && !this._pendingLayout) {
+      // schedule the change at an incoming intersection (the road scrolls it in)
+      this._pendingLayout = { oncomingLanes: section.oncomingLanes, median: section.median };
+      this.road.triggerIntersection?.();
+      this.hud.combo(section.oncomingLanes > 0 ? '⇅ TWO-WAY AHEAD' : 'JUNCTION AHEAD', '#ffd23f');
     }
-    this.road.setMedian(section.median);
-    this.road.setOncomingLanes(section.oncomingLanes);
+    if (this._pendingLayout && this.road.intersection.visible && this.road.intersection.position.z >= -2) {
+      // intersection reached the player: clear ALL traffic & apply the new layout
+      this.traffic.clearAll();
+      this._appliedOncoming = this._pendingLayout.oncomingLanes;
+      this._appliedMedian = this._pendingLayout.median;
+      this.road.setMedian(this._pendingLayout.median);
+      this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
+      this._pendingLayout = null;
+    }
     p.setLaneCount(section.lanes);
 
     // terrain (visual theme) — changes over distance with crossfade
@@ -211,11 +222,15 @@ class Game {
     });
     const distDelta = p.distance - before;
 
-    // tyre tracks: drop skid marks when steering hard or braking
+    // tyre tracks: continuous faint marks; darker when steering hard or braking
     this.fx.updateTracks(distDelta);
-    if ((Math.abs(p.vx) > 6 || this.input.brake) && p.state === 'drive' && !p.airborne) {
-      this._trackTimer = (this._trackTimer || 0) - distDelta;
-      if (this._trackTimer <= 0) { this.fx.dropTrack(p.x, p.vx); this._trackTimer = 1.4; }
+    if (p.state === 'drive' && !p.airborne && p.speed > 4) {
+      this._trackDist = (this._trackDist || 0) + distDelta;
+      if (this._trackDist >= 2.2) {
+        this._trackDist = 0;
+        const skid = (Math.abs(p.vx) > 6 || this.input.brake) ? 1 : 0.25;
+        this.fx.dropTrack(p.x, skid);
+      }
     }
 
     // exit-lane events (Temple-Run style branch into new areas)

@@ -17,23 +17,40 @@ export class Audio {
       this.master.gain.value = 0.7;
       this.master.connect(this.ctx.destination);
 
-      // engine drone
+      // ---- smooth engine: warm filtered triangle + soft sub, gentle vibrato ----
       this.engineGain = this.ctx.createGain();
       this.engineGain.gain.value = 0;
+      // master lowpass that opens with speed (keeps it from sounding buzzy)
+      this.engineFilter = this.ctx.createBiquadFilter();
+      this.engineFilter.type = 'lowpass';
+      this.engineFilter.frequency.value = 500;
+      this.engineFilter.Q.value = 0.7;
+      this.engineFilter.connect(this.engineGain);
       this.engineGain.connect(this.master);
+
+      // main tone (triangle = mellow, not buzzy)
       this.engineOsc = this.ctx.createOscillator();
-      this.engineOsc.type = 'sawtooth';
-      this.engineOsc.frequency.value = 60;
-      const eFilter = this.ctx.createBiquadFilter();
-      eFilter.type = 'lowpass'; eFilter.frequency.value = 600;
-      this.engineOsc.connect(eFilter); eFilter.connect(this.engineGain);
+      this.engineOsc.type = 'triangle';
+      this.engineOsc.frequency.value = 70;
+      const eg1 = this.ctx.createGain(); eg1.gain.value = 0.6;
+      this.engineOsc.connect(eg1); eg1.connect(this.engineFilter);
       this.engineOsc.start();
-      // sub layer
-      this.engineOsc2 = this.ctx.createOscillator();
-      this.engineOsc2.type = 'square'; this.engineOsc2.frequency.value = 90;
-      const g2 = this.ctx.createGain(); g2.gain.value = 0.3;
-      this.engineOsc2.connect(g2); g2.connect(this.engineGain);
-      this.engineOsc2.start();
+
+      // soft sub one octave down (sine = body, no harshness)
+      this.engineSub = this.ctx.createOscillator();
+      this.engineSub.type = 'sine';
+      this.engineSub.frequency.value = 35;
+      const eg2 = this.ctx.createGain(); eg2.gain.value = 0.5;
+      this.engineSub.connect(eg2); eg2.connect(this.engineFilter);
+      this.engineSub.start();
+
+      // subtle vibrato so it "idles" rather than sitting dead flat
+      this.engineLfo = this.ctx.createOscillator();
+      this.engineLfo.type = 'sine'; this.engineLfo.frequency.value = 7;
+      this.engineLfoGain = this.ctx.createGain(); this.engineLfoGain.gain.value = 2.5;
+      this.engineLfo.connect(this.engineLfoGain);
+      this.engineLfoGain.connect(this.engineOsc.frequency);
+      this.engineLfo.start();
 
       // siren nodes
       this.sirenGain = this.ctx.createGain();
@@ -61,13 +78,33 @@ export class Audio {
   // call each frame with speed01 (0..1) and stars
   updateEngine(speed01, stars) {
     if (!this.ctx || !this.enabled) return;
-    const f = 55 + speed01 * 180;
-    this.engineOsc.frequency.setTargetAtTime(f, this.ctx.currentTime, 0.05);
-    this.engineOsc2.frequency.setTargetAtTime(f * 1.5, this.ctx.currentTime, 0.05);
-    this.engineGain.gain.setTargetAtTime(0.08 + speed01 * 0.10, this.ctx.currentTime, 0.1);
+    const t = this.ctx.currentTime;
+    if (!this.running) { // engine off (dead/menu): fade out
+      this.engineGain.gain.setTargetAtTime(0, t, 0.12);
+      this.sirenGain.gain.setTargetAtTime(0, t, 0.2);
+      return;
+    }
+    // pitch rises gently with speed (kept low & warm)
+    const f = 60 + speed01 * 95;
+    this.engineOsc.frequency.setTargetAtTime(f, t, 0.08);
+    this.engineSub.frequency.setTargetAtTime(f * 0.5, t, 0.08);
+    // filter opens with speed -> "revving" without buzz
+    this.engineFilter.frequency.setTargetAtTime(420 + speed01 * 900, t, 0.1);
+    // quiet, smooth level
+    this.engineGain.gain.setTargetAtTime(0.05 + speed01 * 0.06, t, 0.15);
 
-    const sirenLvl = stars >= 1 ? Math.min(0.12, 0.04 + stars * 0.02) : 0;
-    this.sirenGain.gain.setTargetAtTime(sirenLvl, this.ctx.currentTime, 0.2);
+    const sirenLvl = stars >= 1 ? Math.min(0.09, 0.03 + stars * 0.015) : 0;
+    this.sirenGain.gain.setTargetAtTime(sirenLvl, t, 0.25);
+  }
+
+  // start/stop the engine loop (call on run start / death)
+  startEngine() { this.running = true; }
+  stopAll() {
+    this.running = false;
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (this.engineGain) this.engineGain.gain.setTargetAtTime(0, t, 0.12);
+    if (this.sirenGain) this.sirenGain.gain.setTargetAtTime(0, t, 0.15);
   }
 
   _blip(freq, dur, type = 'square', vol = 0.3, slideTo = null) {

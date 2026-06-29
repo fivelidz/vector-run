@@ -25,27 +25,27 @@ export class FX {
     this._data = []; // {x,y,z,vx,vy,vz,life,maxlife,r,g,b,grav}
     for (let i = 0; i < this.max; i++) this._data.push({ life: 0 });
 
-    // ---- tyre tracks (pool of dark quads on the road) ----
+    // ---- tyre tracks (pool of dark quads laid on the road) ----
     this._tracks = [];
-    this._trackMax = 90;
-    const trackGeo = new THREE.PlaneGeometry(0.28, 1.4);
+    this._trackMax = 160;
+    const trackGeo = new THREE.PlaneGeometry(0.34, 2.0);
     for (let i = 0; i < this._trackMax; i++) {
-      const m = new THREE.Mesh(trackGeo, new THREE.MeshBasicMaterial({ color: 0x111114, transparent: true, opacity: 0, depthWrite: false }));
-      m.rotation.x = -Math.PI / 2; m.position.y = 0.03; m.visible = false;
+      const m = new THREE.Mesh(trackGeo, new THREE.MeshBasicMaterial({ color: 0x0a0a0c, transparent: true, opacity: 0, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.position.y = 0.06; m.renderOrder = 2; m.visible = false;
       scene.add(m);
-      this._tracks.push({ mesh: m, z: 0, x: 0, life: 0 });
+      this._tracks.push({ mesh: m, z: 0, x: 0, life: 0, base: 0 });
     }
     this._trackIdx = 0;
   }
 
-  // drop a pair of skid marks behind the player (call while braking/hard steering)
-  dropTrack(x, vx) {
-    for (const off of [-0.45, 0.45]) {
+  // lay a pair of tyre marks behind the player. strength 0..1 (darker on skids)
+  dropTrack(x, strength = 0.4) {
+    for (const off of [-0.42, 0.42]) {
       const t = this._tracks[this._trackIdx];
       this._trackIdx = (this._trackIdx + 1) % this._trackMax;
-      t.x = x + off; t.z = 2.0; t.life = t.maxlife = 2.2;
-      t.mesh.position.set(t.x, 0.03, t.z);
-      t.mesh.material.opacity = 0.55;
+      t.x = x + off; t.z = 1.5; t.life = t.maxlife = 6.0; t.base = Math.min(0.7, 0.25 + strength * 0.5);
+      t.mesh.position.set(t.x, 0.06, t.z);
+      t.mesh.material.opacity = t.base;
       t.mesh.visible = true;
     }
   }
@@ -53,11 +53,11 @@ export class FX {
   updateTracks(distDelta) {
     for (const t of this._tracks) {
       if (t.life <= 0) continue;
-      t.z += distDelta;                       // scroll with the world
-      t.life -= distDelta * 0.02 + 0.016;
+      t.z += distDelta;                       // scroll back with the world
+      t.life -= 0.02;                          // slow fade by frame
       t.mesh.position.z = t.z;
-      t.mesh.material.opacity = Math.max(0, 0.55 * (t.life / t.maxlife));
-      if (t.life <= 0 || t.z > 50) { t.mesh.visible = false; t.life = 0; }
+      t.mesh.material.opacity = Math.max(0, t.base * Math.min(1, t.life / 1.5));
+      if (t.life <= 0 || t.z > 55) { t.mesh.visible = false; t.life = 0; }
     }
   }
 

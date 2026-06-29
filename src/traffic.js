@@ -143,6 +143,18 @@ export class Traffic {
   // Called when the road layout (oncoming/median) changes. Despawn far-ahead
   // traffic (it would be in now-wrong-direction lanes) and pause spawns briefly
   // so the new layout starts clean — no cars driving the wrong way.
+  // remove ALL active traffic/obstacles (used when applying a new road layout)
+  clearAll() {
+    for (let i = this.active.length - 1; i >= 0; i--) {
+      const e = this.active[i];
+      e.mesh.visible = false; this.pools[e.poolKey].push(e);
+    }
+    this.active.length = 0;
+    this._nextRowZ = -CFG.VISIBLE_AHEAD;
+    this._openLane = undefined;
+    this.laneNextSpawn.fill(-CFG.VISIBLE_AHEAD);
+  }
+
   beginTransition(section) {
     // No car clearing (that looked like a "full replacement"). We just reset the
     // row cursor so new-layout rows begin spawning from the far horizon; existing
