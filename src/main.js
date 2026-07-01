@@ -136,7 +136,8 @@ class Game {
     this.director.reset();
     this.terrain.reset();
     this._night = false;
-    this._appliedOncoming = 0; this._appliedMedian = false; this._pendingLayout = null;
+    this._appliedOncoming = 0; this._appliedMedian = false; this._pendingLayout = null; this._pendingLayoutIn = 0;
+    this.road.setOncomingLanes(0); this.road.setMedian(false); // start one-way
     this._lastKm = 0;
     this._exit = null;                    // active exit event
     this._nextExitAt = 700 + Math.random() * 500; // distance of first exit prompt
@@ -189,21 +190,34 @@ class Game {
 
     const layoutChanged = section.oncomingLanes !== this._appliedOncoming || section.median !== this._appliedMedian;
     if (layoutChanged && !this._pendingLayout) {
-      // schedule the change at an incoming intersection (the road scrolls it in)
+      // schedule the change at an incoming intersection. Track our OWN countdown
+      // distance (independent of the shared intersection mesh used by terrain/exit).
       this._pendingLayout = { oncomingLanes: section.oncomingLanes, median: section.median };
+      this._pendingLayoutIn = CFG.VISIBLE_AHEAD; // travel this far before it applies
       this.road.triggerIntersection?.();
       this.hud.combo(section.oncomingLanes > 0 ? '⇅ TWO-WAY AHEAD' : 'JUNCTION AHEAD', '#ffd23f');
     }
-    if (this._pendingLayout && this.road.intersection.visible && this.road.intersection.position.z >= -2) {
-      // intersection reached the player: clear ALL traffic & apply the new layout
-      this.traffic.clearAll();
-      this._appliedOncoming = this._pendingLayout.oncomingLanes;
-      this._appliedMedian = this._pendingLayout.median;
-      this.road.setMedian(this._pendingLayout.median);
-      this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
-      this._pendingLayout = null;
+    if (this._pendingLayout) {
+      this._pendingLayoutIn -= p.speed * dt; // distance travelled this frame
+      if (this._pendingLayoutIn <= 0) {
+        // intersection reached the player: clear ALL traffic & apply the new layout
+        this.traffic.clearAll();
+        this._appliedOncoming = this._pendingLayout.oncomingLanes;
+        this._appliedMedian = this._pendingLayout.median;
+        this.road.setMedian(this._pendingLayout.median);
+        this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
+        this._pendingLayout = null;
+      }
     }
     p.setLaneCount(section.lanes);
+
+    // IMPORTANT: traffic uses the *applied* layout (not the pending director one)
+    // so oncoming cars only start spawning AFTER we've crossed the intersection.
+    const activeSection = {
+      ...section,
+      oncomingLanes: this._appliedOncoming,
+      median: this._appliedMedian,
+    };
 
     // terrain (visual theme) — changes over distance with crossfade
     const terr = this.terrain.update(p.distance);
@@ -238,7 +252,7 @@ class Game {
 
     // scroll road & spawn/move traffic
     this.road.update(distDelta);
-    this.traffic.update(dt, p.speed, section, null);
+    this.traffic.update(dt, p.speed, activeSection, null);
 
     // collisions
     checkCollisions(p, this.traffic, {
@@ -348,11 +362,12 @@ class Game {
     });
 
     // police (visual pursuit only — collision counting handled in onImpact)
-    this.police.update(dt, p, this.director.difficulty, (ev) => {
+    this.police.update(dt, p, this.director.difficulty, (ev, d) => {
       if (ev === 'hazard') this.hud.combo('ROADBLOCK!', '#ff5d5d');
       if (ev === 'busted') this._gameOver('busted');
       if (ev === 'escaped') { this.score += 500; this.hud.combo('ESCAPED! +500', '#5dff9b'); }
-    }, section);
+      if (ev === 'copCrash') { this.fx.sparks(d?.x ?? p.x, 0.8, d?.z ?? 8, 18, 0x4ea3ff); this.fx.smoke(d?.x ?? p.x, 0.5, d?.z ?? 8, 10); this.audio.crash(true); this.score += 250; this.hud.combo('COP WRECKED! +250', '#4ea3ff'); }
+    }, activeSection);
 
     // distance milestones (every 1km) — score bonus + callout
     const km = Math.floor(p.distance / 1000);

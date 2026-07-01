@@ -62,6 +62,8 @@ export class Police {
     c.x = this.road.laneX(c.lane);
     c.targetX = c.x;
     c.lostTimer = 0;
+    c.crashed = false; c.crashY = 0; c.crashVX = 0; c.crashVY = 0; c.crashSpin = 0;
+    mesh.rotation.set(0, 0, 0); mesh.scale.set(1, 1, 1);
     mesh.position.set(c.x, 0, c.z);
     return c;
   }
@@ -107,6 +109,19 @@ export class Police {
     let anyContact = false;
     for (const c of this.cruisers) {
       if (!c.mesh.visible) continue;
+
+      // ---- crashed cruiser: spin off the road (you led it into traffic!) ----
+      if (c.crashed) {
+        c.crashVX = (c.crashVX || 0);
+        c.x += c.crashVX * dt; c.crashY = (c.crashY || 0) + (c.crashVY -= 20 * dt) * dt;
+        if (c.crashY < 0) { c.crashY = 0; c.crashVY *= -0.4; c.crashVX *= 0.7; }
+        c.z += (player.speed * 0.5) * dt; // falls behind
+        c.mesh.position.set(c.x, c.crashY, c.z);
+        c.mesh.rotation.x += c.crashSpin * dt; c.mesh.rotation.z += c.crashSpin * 0.7 * dt;
+        if (c.z > CFG.VISIBLE_BEHIND + 8) { c.mesh.visible = false; }
+        continue;
+      }
+
       // ease the gap toward the desired tail (always keeps pace, no runaway)
       c.z += (desiredTail - c.z) * Math.min(1, dt * 1.6);
       if (c.z < minGap) c.z = minGap;
@@ -114,6 +129,28 @@ export class Police {
       c.targetX += (player.x - c.targetX) * Math.min(1, dt * 1.4);
       c.x += (c.targetX - c.x) * Math.min(1, dt * 2.4);
       c.mesh.position.set(c.x, 0, c.z);
+
+      // ---- collide with NPC traffic: crash the cruiser & shake the chase ----
+      if (this.traffic) {
+        for (const o of this.traffic.active) {
+          if (o.knocked || o.collected) continue;
+          if ((o.type === 'car' || o.type === 'truck') &&
+              Math.abs(o.z - c.z) < CFG.CAR_HALF_L + 1.0 && Math.abs(o.x - c.x) < CFG.CAR_HALF_W + 0.7) {
+            // cop crashes; the NPC gets knocked too
+            c.crashed = true;
+            const sd = (c.x < o.x) ? -1 : 1;
+            c.crashVX = sd * (7 + Math.random() * 5); c.crashVY = 4; c.crashSpin = (Math.random() - 0.5) * 14;
+            o.knocked = true; o.knockVX = -sd * (5 + Math.random() * 4); o.knockVY = 3; o.knockSpin = (Math.random() - 0.5) * 10;
+            onEvent?.('copCrash', { x: c.x, z: c.z });
+            // losing the cop reduces heat so you can escape
+            this.collisions = Math.max(0, this.collisions - 1);
+            this.bust = Math.max(0, this.bust - 40);
+            if (this.collisions < CFG.COLLISIONS_TO_CHASE) this.active = false;
+            break;
+          }
+        }
+      }
+      if (c.crashed) continue;
 
       // small nudge wobble on the bumper (life, never pass-through)
       if (c.z <= minGap + 0.3) c.mesh.position.x += Math.sin(this.time * 20) * 0.04;
