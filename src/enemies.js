@@ -39,25 +39,24 @@ export class Enemies {
     c.fireTimer = 2.0 + Math.random() * 1.5;
     c.knocked = false; c.alive = true; c.age = 0;
     c.slot = this.cars.filter((x) => x !== c && x.mesh.visible && x.alive).length; // unique lead slot
-    c.ky = 0; c.kvx = 0; c.kvy = 0; c.kspin = 0;
+    c.ky = 0; c.kvx = 0; c.kvy = 0; c.kspin = 0; c.airborne = false; c.cy = 0; c.vy = 0;
     c.mesh.scale.set(1, 1, 1);
     c.mesh.rotation.set(0, 0, 0);      // reset any tumble from a previous life
     c.mesh.position.set(c.x, 0, c.z);
     return c;
   }
 
-  // Toss a grenade out from the enemy that arcs and LANDS on the road ahead of
-  // the player (in a lane), then blinks and explodes when the player reaches it.
+  // Drop a grenade out the back of the enemy. It bounces once onto the road,
+  // then just SITS on the tarmac — the world scrolls it back toward the player
+  // at the exact relative speed a parked object moves (like a normal car ahead
+  // that you catch up to). Rolls, blinks, explodes on contact/fuse.
   _fire(c, player) {
     let g = this.bullets.find((x) => !x.mesh.visible);
     if (!g) { const mesh = makeGrenade(); this.group.add(mesh); g = { mesh }; this.bullets.push(g); }
     g.mesh.visible = true;
-    g.x = c.x; g.z = c.z; g.y = 0.9;         // starts at the enemy car
-    // choose a landing spot on the road ahead of the player, in the enemy's lane
-    g.landX = c.x;
-    g.landZ = -18 - Math.random() * 14;      // ahead of the player, in view
-    g.vy = 5.0;                              // toss up; falls to the road
-    g.live = true; g.landed = false; g.fuse = CFG.GRENADE_FUSE;
+    g.x = c.x; g.z = c.z + 2.2; g.y = 0.6;   // pops out just behind the enemy car
+    g.vy = 2.0;                              // gentle hop, NOT a high toss
+    g.live = true; g.landed = false; g.fuse = CFG.GRENADE_FUSE + 4; // longer so it can reach you
     g.mesh.scale.setScalar(1);
     g.mesh.rotation.set(0, 0, 0);
     g.mesh.position.set(g.x, g.y, g.z);
@@ -114,7 +113,22 @@ export class Enemies {
           c.z += Math.sign((c.z - o.z) || -1) * 0.1;
         }
       }
-      c.mesh.position.set(c.x, 0, c.z);
+      // ---- enemy launches off ramps too ----
+      if (c.airborne) {
+        c.vy -= 30 * dt; c.cy = (c.cy || 0) + c.vy * dt;
+        if (c.cy <= 0) { c.cy = 0; c.airborne = false; }
+        c.mesh.rotation.x = -c.vy * 0.012;
+      } else {
+        c.cy = 0; c.mesh.rotation.x = 0;
+        if (this.traffic) {
+          for (const r of this.traffic.active) {
+            if (r.type === 'ramp' && Math.abs(r.z - c.z) < CFG.CAR_HALF_L && Math.abs(r.x - c.x) < CFG.CAR_HALF_W + 0.5) {
+              c.airborne = true; c.vy = 12; break;
+            }
+          }
+        }
+      }
+      c.mesh.position.set(c.x, c.cy || 0, c.z);
 
       // lob a grenade back at the player once they're ahead & in range
       c.fireTimer -= dt;
@@ -155,33 +169,30 @@ export class Enemies {
       if (!g.mesh.visible) continue;
       const tip = g.mesh.userData.tip;
 
+      // ALWAYS scroll with the world (like a parked object the player catches up
+      // to) — this makes it roll back toward the player at a natural speed.
+      g.z += player.speed * dt;
+      g.mesh.rotation.x -= player.speed * dt * 0.4; // roll animation
+
       if (!g.landed) {
-        // arc: ease X/Z toward the landing spot while a ballistic hop plays out.
-        // (landZ is fixed in world space, but the world scrolls, so add scroll.)
-        g.landZ += player.speed * dt;
-        g.x += (g.landX - g.x) * Math.min(1, dt * 3);
-        g.z += (g.landZ - g.z) * Math.min(1, dt * 3) + player.speed * dt * 0.3;
-        g.vy -= 11 * dt; g.y += g.vy * dt;
-        g.mesh.rotation.x -= dt * 5;
-        if (g.y <= 0.3 && g.vy < 0) { g.landed = true; g.y = 0.3; g.fuse = CFG.GRENADE_FUSE; }
-        g.mesh.position.set(g.x, Math.max(0.3, g.y), g.z);
+        // gentle bounce onto the road, then settle
+        g.vy -= 14 * dt; g.y += g.vy * dt;
+        if (g.y <= 0.3) { g.y = 0.3; if (g.vy < -1.5) { g.vy *= -0.4; } else { g.landed = true; g.vy = 0; } }
+        g.mesh.position.set(g.x, g.y, g.z);
       } else {
-        // sit on the road, scroll with the world, blink faster as fuse runs out
-        g.z += player.speed * dt;
         g.mesh.position.set(g.x, 0.3, g.z);
         g.fuse -= dt;
-        const blink = Math.sin(this.time * (14 + (1 - g.fuse / CFG.GRENADE_FUSE) * 30)) > 0;
-        if (tip) tip.material.emissiveIntensity = blink ? 2.2 : 0.3;
-        g.mesh.scale.setScalar(1 + Math.sin(this.time * 8) * 0.06);
-
-        // explode when the player reaches the spot, or the fuse expires
-        const overIt = Math.abs(g.z) < CFG.CAR_HALF_L + 0.8 && Math.abs(g.x - player.x) < CFG.CAR_HALF_W + 0.9;
-        if (g.live && (overIt || g.fuse <= 0)) {
-          g.live = false; g.mesh.visible = false; g.mesh.scale.setScalar(1);
-          onEvent?.('explode', { x: g.x, z: g.z, hit: overIt });
-        }
+        const blink = Math.sin(this.time * (14 + (1 - Math.max(0, g.fuse) / (CFG.GRENADE_FUSE + 4)) * 30)) > 0;
+        if (tip) tip.material.emissiveIntensity = blink ? 2.4 : 0.2;
       }
-      if (g.z > CFG.VISIBLE_BEHIND + 6) { g.mesh.visible = false; }
+
+      // explode when the player reaches the grenade, or the fuse expires
+      const overIt = Math.abs(g.z) < CFG.CAR_HALF_L + 0.9 && Math.abs(g.x - player.x) < CFG.CAR_HALF_W + 0.9;
+      if (g.live && (overIt || g.fuse <= 0)) {
+        g.live = false; g.mesh.visible = false; g.mesh.scale.setScalar(1);
+        onEvent?.('explode', { x: g.x, z: g.z, hit: overIt });
+      }
+      if (g.z > CFG.VISIBLE_BEHIND + 6) { g.mesh.visible = false; g.live = false; }
     }
   }
 

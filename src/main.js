@@ -139,7 +139,8 @@ class Game {
     this._exit = null;                    // active exit event
     this._nextExitAt = 400 + Math.random() * 250; // distance of first exit prompt
     this._desertUntil = 0;                // distance until which desert area lasts
-    this.traffic.desert = false; this.road.desertShoulder = false;
+    this._exitAnim = 0; this.engine.setBank(0);
+    this.traffic.desert = false; this.road.setDesertShoulder(false);
     // clear leftover run-state from the previous run
     this.exitSign.visible = false;
     this.road.intersection.visible = false;
@@ -426,6 +427,15 @@ class Game {
     this.fx.update(dt);
     this.audio.updateEngine(p.speed01(), this.police.stars);
 
+    // exit off-ramp banking animation (camera sweeps right & rolls, then settles)
+    if (this._exitAnim > 0) {
+      this._exitAnim -= dt;
+      const k = this._exitAnim / 1.2;             // 1 -> 0
+      const bank = Math.sin(k * Math.PI) * 0.5;   // ease in/out, peak mid-way
+      this.engine.setBank(bank);
+      if (this._exitAnim <= 0) this.engine.setBank(0);
+    }
+
     // camera
     this.engine.updateCamera(p.x, p.speed01(), dt);
 
@@ -441,7 +451,7 @@ class Game {
   _updateExits(distDelta, p) {
     // end the desert area after its stretch
     if (this.traffic.desert && p.distance > this._desertUntil) {
-      this.traffic.desert = false; this.road.desertShoulder = false;
+      this.traffic.desert = false; this.road.setDesertShoulder(false);
       this.terrain.forceTheme?.(null); // back to normal cycling
       this.audio.setMusicTrack?.('music');
       this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
@@ -470,15 +480,16 @@ class Game {
         e.taken = true;
         const inLane = Math.abs(p.x - this.road.laneX(e.lane)) < CFG.LANE_WIDTH * 0.95; // generous
         if (inLane) {
-          // took the exit -> desert area for a stretch
-          this.traffic.desert = true; this.road.desertShoulder = true;
-          this._desertUntil = p.distance + 900;
+          // took the exit -> banking off-ramp animation, then desert area
+          this.traffic.desert = true; this.road.setDesertShoulder(true);
+          this._desertUntil = p.distance + 1100;
           this.terrain.forceTheme?.('sunset'); // sandy desert palette
-          this.road.triggerIntersection?.();
           this.audio.whoosh();
           this.audio.setMusicTrack?.('musicDesert');
-          this.hud.combo('EXIT TAKEN! 🏜️ DESERT', '#ffb36b');
+          this.hud.combo('TAKING THE EXIT! 🏜️', '#ffb36b');
           this.score += 300;
+          this._exitAnim = 1.2;            // seconds of off-ramp banking
+          this.traffic.clearAll();          // clear the highway; desert starts fresh
         }
       }
       // despawn the sign after it passes

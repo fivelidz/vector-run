@@ -129,6 +129,7 @@ export class Road {
     this.group.add(road);
     this.roadMesh = road;
     this._roadTex = roadTex;
+    this._initVColors(roadGeo, PAL.road); // (was missing -> black vertexColors -> dark road!)
 
     // shoulders (lighter edge strips)
     for (const sx of [-1, 1]) {
@@ -137,6 +138,24 @@ export class Road {
       sh.position.set(sx * (this.halfRoad + 0.2), 0.01, grass.position.z);
       this.group.add(sh);
     }
+
+    // DESERT dirt shoulder lanes (hidden until desertShoulder is on) — a wide
+    // sandy strip either side you can drive onto (packed dirt colour).
+    this.dirtShoulders = new THREE.Group();
+    const dirtMat = flat(0xc9a870, { rough: 1 });
+    for (const sx of [-1, 1]) {
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(6, len), dirtMat);
+      d.rotation.x = -Math.PI / 2;
+      d.position.set(sx * (this.halfRoad + 3.2), 0.005, grass.position.z);
+      this.dirtShoulders.add(d);
+      // rumble strip line at the tarmac edge
+      const rumble = new THREE.Mesh(new THREE.PlaneGeometry(0.3, len), flat(0x8a7048));
+      rumble.rotation.x = -Math.PI / 2;
+      rumble.position.set(sx * (this.halfRoad + 0.35), 0.012, grass.position.z);
+      this.dirtShoulders.add(rumble);
+    }
+    this.dirtShoulders.visible = false;
+    this.group.add(this.dirtShoulders);
 
     // ---- lane dashes (tiled, scrolled) ----
     this.dashes = [];
@@ -191,21 +210,17 @@ export class Road {
     this.scenery = [];
     this._buildScenery(len);
 
-    // ---- moving sky stripe / distant hills (simple) ----
-    const hills = new THREE.Mesh(
-      new THREE.PlaneGeometry(400, 60),
-      flat(0x6fae6f, { rough: 1 })
-    );
-    hills.position.set(0, 12, -CFG.VISIBLE_AHEAD - 40);
-    this.group.add(hills);
-    this.hillsMesh = hills;
+    // distant hills removed — they made a hard horizon line. The ground now
+    // fades into the sky via fog (fog colour tracks the sky). Keep a stub so
+    // terrain code that references hillsMesh stays safe.
+    this.hillsMesh = null;
 
     // ---- intersection marker (a perpendicular cross-road) used as the visual
     // "seam" for theme transitions; spawned at the horizon and scrolled in.
     this.intersection = new THREE.Group();
     // wide perpendicular cross-road with a lighter surface (reads clearly)
     const xroad = new THREE.Mesh(new THREE.PlaneGeometry(140, 18),
-      new THREE.MeshStandardMaterial({ color: 0x6f7588, roughness: 0.95 }));
+      new THREE.MeshStandardMaterial({ color: 0x7a8090, roughness: 0.95 }));
     xroad.rotation.x = -Math.PI / 2; xroad.position.y = 0.02;
     this.intersection.add(xroad);
     // centre dashes along the cross-road (it's a real road going left/right)
@@ -364,6 +379,12 @@ export class Road {
 
   // median barriers removed from the game — always keep it hidden
   setMedian(on) { this.medianActive = false; this.median.visible = false; }
+
+  // toggle the desert dirt shoulders (drivable sandy strips either side)
+  setDesertShoulder(on) {
+    this.desertShoulder = on;
+    if (this.dirtShoulders) this.dirtShoulders.visible = on;
+  }
 
   setOncomingLanes(n) {
     this.oncomingLanes = n;
