@@ -259,16 +259,15 @@ class Game {
     // tyre tracks: a smooth continuous ribbon laid while turning hard or braking
     this.fx.updateTracks(distDelta);
     const skidding = p.state === 'drive' && !p.airborne && p.speed > 4 &&
-      (Math.abs(p.vx) > 4.5 || this.input.brake);
+      (Math.abs(p.vx) > 4 || this.input.brake);
     if (skidding) {
       this._trackDist = (this._trackDist || 0) + distDelta;
-      if (this._trackDist >= 1.4) {   // dense points => smooth curve
+      if (this._trackDist >= 0.6) {   // dense => reads as a smooth continuous line
         this._trackDist = 0;
         this.fx.dropTrack(p.x, Math.min(1, Math.abs(p.vx) / 10 + (this.input.brake ? 0.4 : 0)));
       }
     } else {
-      this._trackDist = 99; // next skid starts a fresh point immediately
-      this.fx.penUp();      // break the ribbon so it doesn't connect gaps
+      this._trackDist = 99;
     }
 
     // exit-lane events (Temple-Run style branch into new areas)
@@ -470,22 +469,23 @@ class Game {
       const ix = this.road.intersection;
       if (ix && ix.visible) this.traffic.turnZ = ix.position.z; // desert cars exit
       if ((ix && ix.visible && ix.position.z >= 0) || p.distance > this._desertUntil + 60) {
-        // merge complete: banking animation + restore the highway
+        // merge complete: restore the highway as a NORMAL transition (no banking)
         this._desertMerging = false;
         this.traffic.desert = false; this.road.setDesertShoulder(false);
         this.traffic.turnZ = null; this.traffic.haltSpawns = false;
         this._appliedOncoming = 0; this.road.setOncomingLanes(0);
         this.terrain.forceTheme?.(null);           // resume theme cycling (eases over time)
         this.audio.setMusicTrack?.('music');
-        this.audio.whoosh();
-        this._exitAnim = 1.2;                       // banking merge animation
         this.traffic.clearAll();
         this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
+        // set a fresh exit cooldown so it doesn't immediately offer another exit
+        this._nextExitAt = p.distance + 700 + Math.random() * 500;
       }
     }
 
-    // schedule a new exit
-    if (!this._exit && p.distance > this._nextExitAt && !this.traffic.desert && !this._pendingLayout && Save.settings.exits !== false) {
+    // schedule a new exit (never while in the desert or merging back)
+    if (!this._exit && !this.traffic.desert && !this._desertMerging &&
+        p.distance > this._nextExitAt && !this._pendingLayout && Save.settings.exits !== false) {
       const exitLane = CFG.NUM_LANES - 1; // far-right lane
       this._exit = { lane: exitLane, z: -CFG.VISIBLE_AHEAD * 0.95, announced: false, taken: false };
       // gantry spans the whole road (centred); the ARROW hangs over the exit lane

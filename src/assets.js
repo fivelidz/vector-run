@@ -72,15 +72,16 @@ export function makeCar(color = PAL.player, kind = 'car') {
     // raised body-coloured sides forming the cockpit rim
     const rim = roundedBox(W * 0.86, 0.4, L * 0.6, 0.16, cabinMat);
     rim.position.set(0, 0.98, -0.05); grp.add(rim); grp.userData.tint.push(rim);
-    // sunken BLACK interior (seats/floor) — always black regardless of body colour
-    const interior = box(W * 0.68, 0.28, L * 0.52, blackMat);
-    interior.position.set(0, 1.04, -0.05); grp.add(interior);
-    // black seat backs
-    for (const sx of [-1, 1]) { const seat = roundedBox(0.3, 0.34, 0.3, 0.1, blackMat); seat.position.set(sx * 0.3, 1.2, 0.35); grp.add(seat); }
-    // BLACK hood + twin racing stripes down the nose (the fixed "decal")
-    const hood = box(W * 0.5, 0.06, L * 0.5, blackMat);
-    hood.position.set(0, 0.94, FWD * (L * 0.28)); grp.add(hood);
-    for (const sx of [-1, 1]) { const st = box(0.1, 0.065, L * 0.85, blackMat); st.position.set(sx * 0.18, 0.95, 0); grp.add(st); }
+    // sunken BLACK interior (seats/floor) — sits clearly BELOW the rim top so it
+    // reads as a cockpit, well clear of the body surface (no z-fighting)
+    const interior = box(W * 0.66, 0.3, L * 0.5, blackMat);
+    interior.position.set(0, 0.92, -0.05); grp.add(interior);   // recessed
+    // black seat backs (raised, distinct)
+    for (const sx of [-1, 1]) { const seat = roundedBox(0.28, 0.36, 0.28, 0.1, blackMat); seat.position.set(sx * 0.3, 1.22, 0.35); grp.add(seat); }
+    // BLACK bonnet stripe as a single raised plate on top of the hood (one mesh,
+    // lifted above the body so it can't z-fight)
+    const stripe = box(0.5, 0.04, L * 0.85, blackMat);
+    stripe.position.set(0, 1.13, 0); grp.add(stripe);
     // small raked windshield at the front of the cockpit
     const glassMat = smooth(0x9fd8ff, { rough: 0.05, metal: 0.6, emissive: 0x223344, emissiveIntensity: 0.15 });
     const ws = box(W * 0.7, 0.34, 0.06, glassMat);

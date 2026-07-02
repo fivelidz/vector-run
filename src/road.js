@@ -382,10 +382,31 @@ export class Road {
 
   // toggle the desert dirt shoulders (drivable sandy strips beyond the used
   // lanes). In desert, traffic only uses lanes 0-2, so lanes 3-4 + this dirt are
-  // an open run with no obstacles.
+  // an open dirt run. We also HIDE the lane dashes on lines 3+ and lay dirt over
+  // lanes 3-4 so the road visually narrows to 3 lanes.
   setDesertShoulder(on) {
     this.desertShoulder = on;
     if (this.dirtShoulders) this.dirtShoulders.visible = on;
+    // lane dashes: in desert keep only lines 1,2,3 (edges of lanes 0-2); hide 4+
+    for (const d of this.dashes) {
+      d.userData._hideDesert = on && d.userData.lineIndex >= 3;
+    }
+    // widen/position the RIGHT dirt to cover lanes 3-4 in desert
+    if (this._dirtR) {
+      if (on) {
+        const inner = -this.halfRoad + this.laneW * 3; // boundary lane2|lane3
+        const outer = this.halfRoad + 9;
+        this._dirtR.geometry.dispose();
+        this._dirtR.geometry = new THREE.PlaneGeometry(outer - inner, this._groundLen);
+        this._dirtR.position.x = (inner + outer) / 2;
+        if (this._dirtRumbleR) this._dirtRumbleR.position.x = inner;
+      } else {
+        this._dirtR.geometry.dispose();
+        this._dirtR.geometry = new THREE.PlaneGeometry(6, this._groundLen);
+        this._dirtR.position.x = this.halfRoad + 3.2;
+        if (this._dirtRumbleR) this._dirtRumbleR.position.x = this.halfRoad + 0.35;
+      }
+    }
   }
 
   setOncomingLanes(n) {
@@ -418,7 +439,7 @@ export class Road {
       obj.position.z = z;
       return z;
     };
-    for (const d of this.dashes) wrap(d);
+    for (const d of this.dashes) { wrap(d); d.visible = !d.userData._hideDesert; }
     for (const s of this.scenery) {
       const z = wrap(s);
       // when a prop recycles to the far horizon, reskin it to the current theme
