@@ -106,6 +106,7 @@ export class Road {
     // grass base (wide) — vertex-coloured so the theme can sweep from horizon
     const grassTex = noiseTexture(0.8);
     grassTex.repeat.set(24, len / 6);
+    this._grassTex = grassTex;
     const grassGeo = new THREE.PlaneGeometry(220, len, 1, this._segZ);
     const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, vertexColors: true, roughness: 1 });
     const grass = new THREE.Mesh(grassGeo, grassMat);
@@ -204,7 +205,7 @@ export class Road {
     this.intersection = new THREE.Group();
     // wide perpendicular cross-road with a lighter surface (reads clearly)
     const xroad = new THREE.Mesh(new THREE.PlaneGeometry(140, 18),
-      new THREE.MeshStandardMaterial({ color: 0x5a6070, roughness: 0.95 }));
+      new THREE.MeshStandardMaterial({ color: 0x6f7588, roughness: 0.95 }));
     xroad.rotation.x = -Math.PI / 2; xroad.position.y = 0.02;
     this.intersection.add(xroad);
     // centre dashes along the cross-road (it's a real road going left/right)
@@ -361,60 +362,32 @@ export class Road {
     return -this.halfRoad + this.laneW * n; // edge between lane (n-1) and lane n
   }
 
-  setMedian(on) {
-    this.medianActive = on;
-    const dx = this._dividerX();
-    if (on && dx !== null) {
-      this.median.position.x = dx;
-      this.median.visible = true;
-      this.centerLine.visible = false;          // barrier replaces the line
-    } else {
-      this.median.visible = false;
-    }
-  }
+  // median barriers removed from the game — always keep it hidden
+  setMedian(on) { this.medianActive = false; this.median.visible = false; }
 
   setOncomingLanes(n) {
     this.oncomingLanes = n;
     const dx = this._dividerX();
-    // show painted centre line on two-way roads that have NO physical barrier
-    if (dx !== null && !this.medianActive) {
-      this.centerLine.position.x = dx;
+    // painted double-yellow centre line on two-way roads (full length, static)
+    if (dx !== null) {
+      this.centerLine.position.set(dx, this.centerLine.position.y, this._groundZ);
       this.centerLine.visible = true;
-    } else if (!this.medianActive) {
+    } else {
       this.centerLine.visible = false;
     }
   }
 
-  // ---- transition preview: the NEW layout is visible BEYOND the intersection
-  // while it approaches; the OLD divider ends AT the intersection. Call every
-  // frame during a pending layout change with the intersection's current z.
-  previewLayout(ixZ, newOncoming, newMedian) {
-    const len = this._groundLen;
-    const halfLen = len / 2;
-    // old (currently applied) divider: cover only the near side [ixZ .. behind]
-    const oldMesh = this.medianActive ? this.median : (this.oncomingLanes > 0 ? this.centerLine : null);
-    if (oldMesh) oldMesh.position.z = ixZ + halfLen;
-
-    // new divider: cover only beyond the intersection [horizon .. ixZ]
-    const newDx = newOncoming > 0 ? (-this.halfRoad + this.laneW * newOncoming) : null;
-    const newMesh = newMedian ? this.median : (newOncoming > 0 ? this.centerLine : null);
-    if (newMesh && newDx !== null && newMesh !== oldMesh) {
-      newMesh.position.x = newDx;
-      newMesh.position.z = ixZ - halfLen;
-      newMesh.visible = true;
-    }
-  }
-  // restore dividers to full-length default positions (after the change applies)
-  clearPreview() {
-    this.median.position.z = this._groundZ;
-    this.centerLine.position.z = this._groundZ;
-  }
+  // no-op stubs (the preview approach caused "imaginary dividers"; the
+  // intersection + traffic clear is the transition seam now)
+  previewLayout() {}
+  clearPreview() { this.centerLine.position.z = this._groundZ; this.median.position.z = this._groundZ; }
 
   // scroll the tiled elements by distance moved this frame
   update(distDelta) {
     this.scrollZ += distDelta;
     // scroll the asphalt texture so the road surface appears to move
     if (this._roadTex) this._roadTex.offset.y = (this.scrollZ / 6) % 1;
+    if (this._grassTex) this._grassTex.offset.y = (this.scrollZ / 6) % 1;
     const wrap = (obj) => {
       let z = obj.userData.baseZ + (this.scrollZ % obj.userData.total);
       while (z > CFG.VISIBLE_BEHIND + 5) z -= obj.userData.total;

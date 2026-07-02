@@ -46,15 +46,17 @@ export class Enemies {
     return c;
   }
 
-  // DROP a grenade out the back of the enemy car; it lands and ROLLS along the
-  // road in the enemy's lane, drifting toward the player, then explodes.
+  // Toss a grenade out from the enemy that arcs and LANDS on the road ahead of
+  // the player (in a lane), then blinks and explodes when the player reaches it.
   _fire(c, player) {
     let g = this.bullets.find((x) => !x.mesh.visible);
     if (!g) { const mesh = makeGrenade(); this.group.add(mesh); g = { mesh }; this.bullets.push(g); }
     g.mesh.visible = true;
-    g.x = c.x; g.z = c.z + 2.0; g.y = 0.6;   // pops out just behind the enemy
-    g.vx = 0;
-    g.vy = 1.5;                              // small hop as it drops out
+    g.x = c.x; g.z = c.z; g.y = 0.9;         // starts at the enemy car
+    // choose a landing spot on the road ahead of the player, in the enemy's lane
+    g.landX = c.x;
+    g.landZ = -18 - Math.random() * 14;      // ahead of the player, in view
+    g.vy = 5.0;                              // toss up; falls to the road
     g.live = true; g.landed = false; g.fuse = CFG.GRENADE_FUSE;
     g.mesh.scale.setScalar(1);
     g.mesh.rotation.set(0, 0, 0);
@@ -92,8 +94,17 @@ export class Enemies {
       const driftBack = Math.max(0, (c.age - CFG.ENEMY_FATIGUE_TIME) * 2.0);
       const desiredZ = -CFG.ENEMY_LEAD_DIST - slot * 6 + Math.min(CFG.ENEMY_LEAD_DIST + 8, driftBack);
       c.z += (desiredZ - c.z) * Math.min(1, dt * 0.7);
-      const laneOff = slot === 0 ? 0 : (slot % 2 ? CFG.LANE_WIDTH : -CFG.LANE_WIDTH);
-      c.targetX += ((player.x + laneOff) - c.targetX) * Math.min(1, dt * 0.5);
+      // pick an ADJACENT lane (not the player's) to overtake in — an enemy that
+      // is still BEHIND/ALONGSIDE the player stays out of their lane; once safely
+      // ahead it can move into line to attack.
+      const safelyAhead = c.z < -CFG.CAR_HALF_L * 2 - 2;
+      let laneOff = slot % 2 ? CFG.LANE_WIDTH : -CFG.LANE_WIDTH; // default a side
+      if (slot === 0 && safelyAhead) laneOff = 0;               // lead car lines up when ahead
+      // keep them on the tarmac
+      let want = player.x + laneOff;
+      const maxX = this.road.halfRoad - CFG.LANE_WIDTH * 0.5;
+      want = Math.max(-maxX, Math.min(maxX, want));
+      c.targetX += (want - c.targetX) * Math.min(1, dt * 0.5);
       c.x += (c.targetX - c.x) * Math.min(1, dt * 1.8);
       // separation from other enemies (no overlap)
       for (const o of this.cars) {
@@ -137,33 +148,36 @@ export class Enemies {
       }
     }
 
-    // ---- grenades: dropped out the back, they LAND then ROLL down the road
-    // toward the player (drifting into the player's lane), blinking, and EXPLODE
-    // when they reach the player or the fuse ends. In-line & dodgeable.
+    // ---- grenades: arc toward a landing spot ahead of the player, then sit &
+    // BLINK on the road (scrolling with the world) and EXPLODE when the player
+    // drives over them or the fuse ends. Land-and-explode, dodgeable.
     for (const g of this.bullets) {
       if (!g.mesh.visible) continue;
       const tip = g.mesh.userData.tip;
 
       if (!g.landed) {
-        // small hop as it drops out, world scrolls it toward the player
-        g.z += player.speed * dt; g.vy -= 12 * dt; g.y += g.vy * dt;
+        // arc: ease X/Z toward the landing spot while a ballistic hop plays out.
+        // (landZ is fixed in world space, but the world scrolls, so add scroll.)
+        g.landZ += player.speed * dt;
+        g.x += (g.landX - g.x) * Math.min(1, dt * 3);
+        g.z += (g.landZ - g.z) * Math.min(1, dt * 3) + player.speed * dt * 0.3;
+        g.vy -= 11 * dt; g.y += g.vy * dt;
         g.mesh.rotation.x -= dt * 5;
-        if (g.y <= 0.3) { g.landed = true; g.y = 0.3; }
+        if (g.y <= 0.3 && g.vy < 0) { g.landed = true; g.y = 0.3; g.fuse = CFG.GRENADE_FUSE; }
         g.mesh.position.set(g.x, Math.max(0.3, g.y), g.z);
       } else {
-        // roll along the road: scroll with the world + drift toward player's lane
+        // sit on the road, scroll with the world, blink faster as fuse runs out
         g.z += player.speed * dt;
-        g.x += (player.x - g.x) * Math.min(1, dt * 0.6); // homes gently onto your lane
         g.mesh.position.set(g.x, 0.3, g.z);
-        g.mesh.rotation.x -= (player.speed * dt) * 0.5;  // roll animation
         g.fuse -= dt;
         const blink = Math.sin(this.time * (14 + (1 - g.fuse / CFG.GRENADE_FUSE) * 30)) > 0;
         if (tip) tip.material.emissiveIntensity = blink ? 2.2 : 0.3;
+        g.mesh.scale.setScalar(1 + Math.sin(this.time * 8) * 0.06);
 
-        // explode on reaching the player, or fuse out
-        const overIt = Math.abs(g.z) < CFG.CAR_HALF_L + 0.7 && Math.abs(g.x - player.x) < CFG.CAR_HALF_W + 0.8;
+        // explode when the player reaches the spot, or the fuse expires
+        const overIt = Math.abs(g.z) < CFG.CAR_HALF_L + 0.8 && Math.abs(g.x - player.x) < CFG.CAR_HALF_W + 0.9;
         if (g.live && (overIt || g.fuse <= 0)) {
-          g.live = false; g.mesh.visible = false;
+          g.live = false; g.mesh.visible = false; g.mesh.scale.setScalar(1);
           onEvent?.('explode', { x: g.x, z: g.z, hit: overIt });
         }
       }

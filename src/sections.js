@@ -21,11 +21,6 @@ const TEMPLATES = {
     blockedLanes: [], allowObstacles: false, allowCoins: true,
     minLen: 450, maxLen: 700, weight: 0.25 + d * 0.6,
   }),
-  median: (d) => ({
-    name: 'Median Split', lanes: 5, oncomingLanes: 2, median: true,
-    blockedLanes: [], allowObstacles: true, allowCoins: true,
-    minLen: 480, maxLen: 720, weight: 0.3 + d * 0.4,
-  }),
   construction: (d) => ({
     name: 'Construction', lanes: 5, oncomingLanes: 0, median: false,
     blockedLanes: [d > 0.5 ? 0 : 4], allowObstacles: true, allowCoins: false,
@@ -33,7 +28,7 @@ const TEMPLATES = {
   }),
 };
 
-const ORDER = ['open', 'rush', 'twoway', 'median', 'construction'];
+const ORDER = ['open', 'rush', 'twoway', 'construction'];
 
 export class SectionDirector {
   constructor() { this.reset(); }

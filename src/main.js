@@ -133,7 +133,7 @@ class Game {
     this.director.reset();
     this.terrain.reset();
     this._night = false;
-    this._appliedOncoming = 0; this._appliedMedian = false; this._pendingLayout = null; this._pendingLayoutIn = 0;
+    this._appliedOncoming = 0; this._pendingLayout = null; this._pendingLayoutIn = 0;
     this.road.setOncomingLanes(0); this.road.setMedian(false); // start one-way
     this._lastKm = 0;
     this._exit = null;                    // active exit event
@@ -197,11 +197,11 @@ class Game {
     //          naturally EMPTIES as existing cars scroll past you. Announce it.
     // Phase 2: once the road ahead is clear AND we've travelled the transition
     //          distance, the intersection passes and the new layout begins.
-    const layoutChanged = section.oncomingLanes !== this._appliedOncoming || section.median !== this._appliedMedian;
+    const layoutChanged = section.oncomingLanes !== this._appliedOncoming;
     if (layoutChanged && !this._pendingLayout) {
       // announce it; stop spawning so the road empties, and send an INTERSECTION
       // in from the horizon. The layout only flips when you DRIVE THROUGH it.
-      this._pendingLayout = { oncomingLanes: section.oncomingLanes, median: section.median };
+      this._pendingLayout = { oncomingLanes: section.oncomingLanes };
       this.traffic.haltSpawns = true;
       this.road.triggerIntersection?.();
       this.hud.combo(section.oncomingLanes > 0 ? '⇅ TWO-WAY AHEAD' : 'JUNCTION AHEAD', '#ffd23f');
@@ -209,19 +209,13 @@ class Game {
     if (this._pendingLayout) {
       const ix = this.road.intersection;
       if (ix && ix.visible) {
-        // preview: the NEW divider (median/centre-line) is drawn only BEYOND the
-        // intersection, so you SEE the new road layout up ahead before reaching it
-        this.road.previewLayout(ix.position.z, this._pendingLayout.oncomingLanes, this._pendingLayout.median);
-        // NPCs that reach the junction turn left off the road (they exit there)
+        // NPCs that reach the junction turn off (they exit there)
         this.traffic.turnZ = ix.position.z;
       }
       // apply exactly when you drive through the junction
       if (ix && ix.visible && ix.position.z >= 0) {
         this._appliedOncoming = this._pendingLayout.oncomingLanes;
-        this._appliedMedian = this._pendingLayout.median;
-        this.road.setMedian(this._pendingLayout.median);
         this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
-        this.road.clearPreview();
         this._pendingLayout = null;
         this.traffic.haltSpawns = false;         // resume spawning in the new layout
         this.traffic.turnZ = null;
@@ -234,7 +228,7 @@ class Game {
     const activeSection = {
       ...section,
       oncomingLanes: this._appliedOncoming,
-      median: this._appliedMedian,
+      median: false,
     };
 
     // terrain (visual theme) — changes over distance with crossfade

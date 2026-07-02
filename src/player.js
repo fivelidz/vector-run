@@ -9,8 +9,8 @@ export const PStates = { DRIVE: 'drive', SPIN: 'spin', WRECKED: 'wrecked' };
 export class Player {
   constructor(scene, color) {
     this.scene = scene;
-    // procedural car — renders reliably & coloured from the chase camera
-    this.mesh = makeCar(color, 'car');
+    // procedural OPEN-TOP hero car — renders reliably & coloured from chase cam
+    this.mesh = makeCar(color, 'convertible');
     this.mesh.position.set(0, 0, 0);
     scene.add(this.mesh);
 

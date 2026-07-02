@@ -65,7 +65,22 @@ export function makeCar(color = PAL.player, kind = 'car') {
   const nose = roundedBox(W * 0.9, H * 0.55, L * 0.3, 0.2, bodyMat.clone());
   nose.position.set(0, 0.5, FWD * (L * 0.42)); grp.add(nose); grp.userData.tint.push(nose);
 
-  if (!long) {
+  if (kind === 'convertible') {
+    // OPEN-TOP: low body sides + a small windshield + dark cockpit, no roof.
+    const cabinMat = smooth(shade(color, -0.05), { rough: 0.3, metal: 0.4 });
+    // raised body-coloured sides forming the cockpit rim
+    const rim = roundedBox(W * 0.86, 0.4, L * 0.6, 0.16, cabinMat);
+    rim.position.set(0, 0.98, -0.05); grp.add(rim); grp.userData.tint.push(rim);
+    // sunken dark interior (seats/floor)
+    const interior = box(W * 0.66, 0.25, L * 0.5, smooth(0x15181f, { rough: 0.8, metal: 0 }));
+    interior.position.set(0, 1.02, -0.05); grp.add(interior);
+    // two head-rest bumps
+    for (const sx of [-1, 1]) { const hr = roundedBox(0.28, 0.28, 0.28, 0.1, cabinMat.clone()); hr.position.set(sx * 0.3, 1.18, 0.35); grp.add(hr); grp.userData.tint.push(hr); }
+    // small raked windshield at the front of the cockpit
+    const glassMat = smooth(0x9fd8ff, { rough: 0.05, metal: 0.6, emissive: 0x223344, emissiveIntensity: 0.15 });
+    const ws = box(W * 0.7, 0.34, 0.06, glassMat);
+    ws.position.set(0, 1.2, FWD * (L * 0.14)); ws.rotation.x = FWD * 0.25; grp.add(ws);
+  } else if (!long) {
     // curved cabin (lower, raked) — a squashed rounded box
     const cabinMat = smooth(shade(color, -0.05), { rough: 0.25, metal: 0.4 });
     const cabin = roundedBox(W * 0.78, 0.5, L * 0.5, 0.22, cabinMat);
