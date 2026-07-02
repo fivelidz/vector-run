@@ -86,9 +86,9 @@ class Game {
       audio: this.audio,
       onPlay: () => this.startRun(),
       onRetry: () => this.startRun(),
-      onResume: () => { this._last = performance.now(); this._acc = 0; this.state = GS.PLAY; this.hud.show(); },
-      onQuit: () => { this.state = GS.MENU; this.hud.hide(); this.menus.showMenu(); this._buildPlayer(); this.player.mesh.position.z = -2; },
-      onPause: () => { if (this.state === GS.PLAY) { this.state = GS.PAUSE; this.menus.showPause(); } },
+      onResume: () => { this._last = performance.now(); this._acc = 0; this.state = GS.PLAY; this.audio.startEngine(); this.hud.show(); },
+      onQuit: () => { this.audio.stopAll(); this.state = GS.MENU; this.hud.hide(); this.menus.showMenu(); this._buildPlayer(); this.player.mesh.position.z = -2; },
+      onPause: () => { if (this.state === GS.PLAY) { this.state = GS.PAUSE; this.audio.stopAll(); this.menus.showPause(); } },
     });
     this.menus.onCarChange = () => { this._buildPlayer(); this.player.mesh.position.z = -2; };
     this.menus.onSteerChange = (m) => this.input.setMode(m);
@@ -107,8 +107,8 @@ class Game {
     // keyboard pause
     window.addEventListener('keydown', (e) => {
       if ((e.code === 'Escape' || e.code === 'KeyP')) {
-        if (this.state === GS.PLAY) { this.state = GS.PAUSE; this.menus.showPause(); }
-        else if (this.state === GS.PAUSE) { this._last = performance.now(); this._acc = 0; this.state = GS.PLAY; this.menus.hidePause(); this.hud.show(); }
+        if (this.state === GS.PLAY) { this.state = GS.PAUSE; this.audio.stopAll(); this.menus.showPause(); }
+        else if (this.state === GS.PAUSE) { this._last = performance.now(); this._acc = 0; this.state = GS.PLAY; this.audio.startEngine(); this.menus.hidePause(); this.hud.show(); }
       }
     });
   }
@@ -140,6 +140,12 @@ class Game {
     this._nextExitAt = 400 + Math.random() * 250; // distance of first exit prompt
     this._desertUntil = 0;                // distance until which desert area lasts
     this.traffic.desert = false; this.road.desertShoulder = false;
+    // clear leftover run-state from the previous run
+    this.exitSign.visible = false;
+    this.road.intersection.visible = false;
+    this.road.clearPreview();
+    this.fx.clearTracks();
+    this.audio.setMusicTrack?.('music');
     this.hud.clearWanted();
     this.score = 0; this.runCoins = 0; this.comboMult = 1; this.comboTimer = 0;
     this._acc = 0; this._last = performance.now(); // fresh clock for the run

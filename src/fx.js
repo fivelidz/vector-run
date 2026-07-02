@@ -50,6 +50,10 @@ export class FX {
     }
   }
 
+  clearTracks() {
+    for (const t of this._tracks) { t.life = 0; t.mesh.visible = false; }
+  }
+
   updateTracks(distDelta) {
     for (const t of this._tracks) {
       if (t.life <= 0) continue;

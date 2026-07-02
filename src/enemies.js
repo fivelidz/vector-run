@@ -19,9 +19,10 @@ export class Enemies {
   }
 
   reset() {
-    for (const c of this.cars) c.mesh.visible = false;
-    for (const b of this.bullets) b.mesh.visible = false;
-    this.cars.length = 0; this.bullets.length = 0;
+    // hide but KEEP the pooled meshes (clearing the arrays leaked meshes into
+    // the scene on every retry — _spawnEnemy reuses hidden entries)
+    for (const c of this.cars) { c.mesh.visible = false; c.alive = false; c.knocked = false; }
+    for (const b of this.bullets) { b.mesh.visible = false; b.live = false; }
     this._spawnTimer = CFG.ENEMY_FIRST_DELAY;
   }
 

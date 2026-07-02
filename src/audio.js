@@ -71,7 +71,13 @@ export class Audio {
   }
 
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
-  setEnabled(v) { this.enabled = v; if (!v) this.stopAll(); else if (this.running) this._ensureLoops(); }
+  setEnabled(v) {
+    // mute/unmute must NOT clobber the run state (stopAll sets running=false,
+    // which made un-muting mid-run leave the engine silent forever)
+    this.enabled = v;
+    if (!v) { this._stopLoop('engine'); this._stopLoop('siren'); this._stopLoop('music'); }
+    else if (this.running) this._ensureLoops();
+  }
   setMusic(v) { this.musicOn = v; if (!v) this._stopLoop('music'); else if (this.running) this._startMusic(); }
 
   // ---------- one-shot playback (sample, else synth fallback) ----------

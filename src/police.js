@@ -20,8 +20,8 @@ export class Police {
   }
 
   reset() {
-    for (const c of this.cruisers) c.mesh.visible = false;
-    this.cruisers.length = 0;
+    // hide but KEEP pooled cruisers (clearing the array leaked meshes per retry)
+    for (const c of this.cruisers) { c.mesh.visible = false; c.crashed = false; }
     this.collisions = 0;        // counted collisions
     this.lastHitTime = -999;    // seconds (game clock)
     this.time = 0;              // game clock
