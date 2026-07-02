@@ -202,23 +202,41 @@ export class Road {
     // ---- intersection marker (a perpendicular cross-road) used as the visual
     // "seam" for theme transitions; spawned at the horizon and scrolled in.
     this.intersection = new THREE.Group();
-    const xroad = new THREE.Mesh(new THREE.PlaneGeometry(120, 12),
-      new THREE.MeshStandardMaterial({ color: 0x2e3340, roughness: 0.95 }));
-    xroad.rotation.x = -Math.PI / 2; xroad.position.y = 0.015;
+    // wide perpendicular cross-road with a lighter surface (reads clearly)
+    const xroad = new THREE.Mesh(new THREE.PlaneGeometry(140, 18),
+      new THREE.MeshStandardMaterial({ color: 0x5a6070, roughness: 0.95 }));
+    xroad.rotation.x = -Math.PI / 2; xroad.position.y = 0.02;
     this.intersection.add(xroad);
-    // crosswalk stripes
+    // centre dashes along the cross-road (it's a real road going left/right)
+    for (let i = -8; i <= 8; i++) {
+      if (Math.abs(i * 4) < this.halfRoad + 2) continue; // skip over the main road
+      const d = box(2.2, 0.02, 0.25, flat(0xf4d35e));
+      d.position.set(i * 4, 0.05, 0);
+      this.intersection.add(d);
+    }
+    // edge lines of the cross-road
+    for (const sz of [-1, 1]) {
+      const edge = box(140, 0.02, 0.25, flat(0xe8e8ec));
+      edge.position.set(0, 0.045, sz * 8.6);
+      this.intersection.add(edge);
+    }
+    // white STOP line across the main road just before the junction
+    const stop = box(this.roadW, 0.02, 0.9, flat(0xffffff, { emissive: 0x222222, emissiveIntensity: 0.15 }));
+    stop.position.set(0, 0.05, 10.2);
+    this.intersection.add(stop);
+    // crosswalk stripes on the near side
     for (let i = -5; i <= 5; i++) {
-      const s = box(1.0, 0.02, 5, flat(0xffffff, { emissive: 0x222222, emissiveIntensity: 0.1 }));
-      s.position.set(i * 2.4, 0.04, 0);
+      const s = box(1.0, 0.02, 2.6, flat(0xffffff, { emissive: 0x222222, emissiveIntensity: 0.1 }));
+      s.position.set(i * 1.6, 0.04, 11.8);
       this.intersection.add(s);
     }
     // traffic-light posts on the corners
     for (const sx of [-1, 1]) {
-      const post = box(0.2, 5, 0.2, flat(0x33363f)); post.position.set(sx * (this.halfRoad + 2), 2.5, 0);
+      const post = box(0.2, 5, 0.2, flat(0x33363f)); post.position.set(sx * (this.halfRoad + 2), 2.5, 9.5);
       const head = box(0.5, 1.2, 0.4, flat(0x111));
-      head.position.set(sx * (this.halfRoad + 2), 5, 0);
+      head.position.set(sx * (this.halfRoad + 2), 5, 9.5);
       const grn = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 8), flat(0x33ff55, { emissive: 0x22cc44, emissiveIntensity: 1.2 }));
-      grn.position.set(sx * (this.halfRoad + 2), 4.7, 0.22);
+      grn.position.set(sx * (this.halfRoad + 2), 4.7, 9.8);
       this.intersection.add(post, head, grn);
     }
     this.intersection.visible = false;
@@ -362,6 +380,31 @@ export class Road {
     } else if (!this.medianActive) {
       this.centerLine.visible = false;
     }
+  }
+
+  // ---- transition preview: the NEW layout is visible BEYOND the intersection
+  // while it approaches; the OLD divider ends AT the intersection. Call every
+  // frame during a pending layout change with the intersection's current z.
+  previewLayout(ixZ, newOncoming, newMedian) {
+    const len = this._groundLen;
+    const halfLen = len / 2;
+    // old (currently applied) divider: cover only the near side [ixZ .. behind]
+    const oldMesh = this.medianActive ? this.median : (this.oncomingLanes > 0 ? this.centerLine : null);
+    if (oldMesh) oldMesh.position.z = ixZ + halfLen;
+
+    // new divider: cover only beyond the intersection [horizon .. ixZ]
+    const newDx = newOncoming > 0 ? (-this.halfRoad + this.laneW * newOncoming) : null;
+    const newMesh = newMedian ? this.median : (newOncoming > 0 ? this.centerLine : null);
+    if (newMesh && newDx !== null && newMesh !== oldMesh) {
+      newMesh.position.x = newDx;
+      newMesh.position.z = ixZ - halfLen;
+      newMesh.visible = true;
+    }
+  }
+  // restore dividers to full-length default positions (after the change applies)
+  clearPreview() {
+    this.median.position.z = this._groundZ;
+    this.centerLine.position.z = this._groundZ;
   }
 
   // scroll the tiled elements by distance moved this frame

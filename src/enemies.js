@@ -86,9 +86,11 @@ export class Enemies {
       // caught & rammed. Stagger enemies by slot so they never share a spot.
       const slot = c.slot ?? 0;
       c.age = (c.age || 0) + dt;
-      // they lead at first, then slow and drift right back to the player so you
-      // can catch and ram them (drift-back grows steadily with age).
-      const desiredZ = -CFG.ENEMY_LEAD_DIST + slot * 6 - Math.min(CFG.ENEMY_LEAD_DIST + 4, c.age * 2.2);
+      // they lead at first, then SLOW so they drift back toward the player and
+      // can be caught & rammed. (+driftBack means z INCREASES toward the player;
+      // the previous minus sign made them drift AWAY — that was the bug)
+      const driftBack = Math.min(CFG.ENEMY_LEAD_DIST + 2, c.age * 1.8);
+      const desiredZ = -CFG.ENEMY_LEAD_DIST - slot * 6 + driftBack;
       c.z += (desiredZ - c.z) * Math.min(1, dt * 0.6);
       const laneOff = slot === 0 ? 0 : (slot % 2 ? CFG.LANE_WIDTH : -CFG.LANE_WIDTH);
       c.targetX += ((player.x + laneOff) - c.targetX) * Math.min(1, dt * 0.5);

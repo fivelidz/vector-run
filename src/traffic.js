@@ -42,6 +42,7 @@ export class Traffic {
     this._nextRowZ = -60;        // first row spawns a bit ahead
     this._openLane = undefined;  // guaranteed-open path lane
     this.haltSpawns = false;
+    this.turnZ = null;           // junction z where NPCs turn off (transitions)
   }
 
   _obtain(poolKey, color) {
@@ -96,6 +97,7 @@ export class Traffic {
     e.collected = false;       // coin collected flag (reset on reuse!)
     e.cleared = false;         // jumped-over flag (reset on reuse!)
     e.knocked = false; e.knockY = 0; e.knockVX = 0; e.knockVY = 0; e.knockSpin = 0;
+    e.turning = false; e.turnYaw = 0;
     e.used = false;
     // power-up type + recolour the icon
     if (type === 'powerup') {
@@ -307,6 +309,27 @@ export class Traffic {
           e.speed += (aheadSlow.speed - e.speed) * Math.min(1, dt * 2); // match slower
           if (e.mesh.userData.headlights) e.mesh.userData.headlights.emissiveIntensity = (Math.sin(performance.now() * 0.012) > 0) ? 1.6 : 0.6; // blinker pulse
         }
+      }
+
+      // during a layout transition, cars that reach the junction TURN LEFT and
+      // leave the road (they exit at the intersection instead of driving through)
+      if (this.turnZ != null && !e.turning && !e.knocked &&
+          (e.type === 'car' || e.type === 'truck') &&
+          Math.abs(e.z - this.turnZ) < 6) {
+        e.turning = true;
+      }
+      if (e.turning) {
+        // steer off to the left, rotating to face the side road
+        e.x -= 14 * dt;
+        e.turnYaw = Math.min((e.turnYaw || 0) + dt * 2.2, Math.PI / 2);
+        e.mesh.rotation.y = (e.oncoming ? Math.PI : 0) + e.turnYaw;
+        e.z += playerSpeed * dt * 0.4; // roughly holds at the junction as it exits
+        e.mesh.position.set(e.x, 0, e.z);
+        if (e.x < -this.road.halfRoad - 14) { // fully off-road: despawn
+          e.mesh.visible = false; this.pools[e.poolKey].push(e); this.active.splice(i, 1);
+          continue;
+        }
+        continue; // skip normal motion while turning
       }
 
       // relative motion: world moves +Z by playerSpeed; entity also moves

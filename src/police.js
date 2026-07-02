@@ -90,7 +90,7 @@ export class Police {
     const wantCruisers = this.active ? 1 : 0;
     const liveCount = this.cruisers.filter((c) => c.mesh.visible).length;
     this._spawnTimer -= dt;
-    if (liveCount < wantCruisers && this._spawnTimer <= 0) { this._spawnCruiser(); this._spawnTimer = 1.6; }
+    if (liveCount < wantCruisers && this._spawnTimer <= 0) { this._spawnCruiser(); this._spawnTimer = 1.6; onEvent?.('cruiserSpawn'); }
     if (liveCount > wantCruisers) {
       const live = this.cruisers.filter((c) => c.mesh.visible);
       for (let i = wantCruisers; i < live.length; i++) live[i].mesh.visible = false;

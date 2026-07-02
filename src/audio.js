@@ -143,13 +143,15 @@ export class Audio {
       this._updateSynthEngine(speed01, t); // synth fallback
     }
 
-    // SIREN (sample loop faded by wanted level, else synth)
-    const sirenLvl = (this.running && stars >= 1) ? Math.min(0.5, 0.15 + stars * 0.08) : 0;
-    if (this.buffers.siren) {
-      if (sirenLvl > 0 && !this._loops.siren) this._startLoop('siren', 0.0001);
-      if (this._loops.siren) this._loops.siren.gain.gain.setTargetAtTime(sirenLvl, t, 0.3);
-    } else if (this.synthSiren) {
-      this.synthSirenGain.gain.setTargetAtTime(sirenLvl, t, 0.25);
+    // (siren is a ONE-SHOT burst when a cruiser appears — sirenBurst() — the
+    // continuous loop was annoying)
+  }
+
+  // single siren wail, played once when a police car shows up
+  sirenBurst() {
+    if (!this._play('siren', { vol: 0.45 })) {
+      this._blip(700, 0.5, 'sine', 0.2, 950);
+      setTimeout(() => this._blip(950, 0.5, 'sine', 0.18, 700), 450);
     }
   }
 

@@ -103,10 +103,7 @@ class Game {
       for (const id in ids) { const el = document.getElementById(id); if (el) el.value = def[ids[id]]; }
     };
 
-    this.input.bindButtons({
-      brakeBtn: document.getElementById('btn-brake'),
-    });
-    this.input.bindJumpButton(document.getElementById('btn-jump'));
+    // on-screen pedals removed — keyboard brake (S/↓), jump via Space / swipe-up
     // keyboard pause
     window.addEventListener('keydown', (e) => {
       if ((e.code === 'Escape' || e.code === 'KeyP')) {
@@ -140,7 +137,7 @@ class Game {
     this.road.setOncomingLanes(0); this.road.setMedian(false); // start one-way
     this._lastKm = 0;
     this._exit = null;                    // active exit event
-    this._nextExitAt = 700 + Math.random() * 500; // distance of first exit prompt
+    this._nextExitAt = 400 + Math.random() * 250; // distance of first exit prompt
     this._desertUntil = 0;                // distance until which desert area lasts
     this.traffic.desert = false; this.road.desertShoulder = false;
     this.hud.clearWanted();
@@ -203,16 +200,24 @@ class Game {
       this.hud.combo(section.oncomingLanes > 0 ? '⇅ TWO-WAY AHEAD' : 'JUNCTION AHEAD', '#ffd23f');
     }
     if (this._pendingLayout) {
-      // apply exactly when the intersection mesh reaches the player (z >= 0),
-      // i.e. as you drive through the junction — the logical transition feature.
       const ix = this.road.intersection;
+      if (ix && ix.visible) {
+        // preview: the NEW divider (median/centre-line) is drawn only BEYOND the
+        // intersection, so you SEE the new road layout up ahead before reaching it
+        this.road.previewLayout(ix.position.z, this._pendingLayout.oncomingLanes, this._pendingLayout.median);
+        // NPCs that reach the junction turn left off the road (they exit there)
+        this.traffic.turnZ = ix.position.z;
+      }
+      // apply exactly when you drive through the junction
       if (ix && ix.visible && ix.position.z >= 0) {
         this._appliedOncoming = this._pendingLayout.oncomingLanes;
         this._appliedMedian = this._pendingLayout.median;
         this.road.setMedian(this._pendingLayout.median);
         this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
+        this.road.clearPreview();
         this._pendingLayout = null;
         this.traffic.haltSpawns = false;         // resume spawning in the new layout
+        this.traffic.turnZ = null;
       }
     }
     p.setLaneCount(section.lanes);
@@ -373,6 +378,7 @@ class Game {
       if (ev === 'hazard') this.hud.combo('ROADBLOCK!', '#ff5d5d');
       if (ev === 'busted') this._gameOver('busted');
       if (ev === 'escaped') { this.score += 500; this.hud.combo('ESCAPED! +500', '#5dff9b'); }
+      if (ev === 'cruiserSpawn') this.audio.sirenBurst();
       if (ev === 'copCrash') { this.fx.sparks(d?.x ?? p.x, 0.8, d?.z ?? 8, 18, 0x4ea3ff); this.fx.smoke(d?.x ?? p.x, 0.5, d?.z ?? 8, 10); this.audio.crash(true); this.score += 250; this.hud.combo('COP WRECKED! +250', '#4ea3ff'); }
     }, activeSection);
 
@@ -441,10 +447,12 @@ class Game {
     }
 
     // schedule a new exit
-    if (!this._exit && p.distance > this._nextExitAt && !this.traffic.desert) {
+    if (!this._exit && p.distance > this._nextExitAt && !this.traffic.desert && !this._pendingLayout) {
       const exitLane = CFG.NUM_LANES - 1; // far-right lane
       this._exit = { lane: exitLane, z: -CFG.VISIBLE_AHEAD * 0.95, announced: false, taken: false };
-      this.exitSign.position.set(this.road.laneX(exitLane), 0, this._exit.z);
+      // gantry spans the whole road (centred); the ARROW hangs over the exit lane
+      this.exitSign.position.set(0, 0, this._exit.z);
+      if (this.exitSign.userData.arrow) this.exitSign.userData.arrow.position.x = this.road.laneX(exitLane);
       this.exitSign.visible = true;
       this.hud.combo('EXIT AHEAD → KEEP RIGHT', '#5dff9b');
     }
@@ -459,7 +467,7 @@ class Game {
       // decision point: when the sign reaches the player (wide window for high speed)
       if (!e.taken && e.z > -6) {
         e.taken = true;
-        const inLane = Math.abs(p.x - this.road.laneX(e.lane)) < CFG.LANE_WIDTH * 0.7;
+        const inLane = Math.abs(p.x - this.road.laneX(e.lane)) < CFG.LANE_WIDTH * 0.95; // generous
         if (inLane) {
           // took the exit -> desert area for a stretch
           this.traffic.desert = true; this.road.desertShoulder = true;
@@ -476,7 +484,7 @@ class Game {
       if (e.z > CFG.VISIBLE_BEHIND + 8) {
         this.exitSign.visible = false;
         this._exit = null;
-        this._nextExitAt = p.distance + 900 + Math.random() * 700;
+        this._nextExitAt = p.distance + 700 + Math.random() * 500;
       }
     }
   }
