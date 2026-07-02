@@ -148,11 +148,11 @@ export class Road {
       d.rotation.x = -Math.PI / 2;
       d.position.set(sx * (this.halfRoad + 3.2), 0.005, grass.position.z);
       this.dirtShoulders.add(d);
-      // rumble strip line at the tarmac edge
       const rumble = new THREE.Mesh(new THREE.PlaneGeometry(0.3, len), flat(0x8a7048));
       rumble.rotation.x = -Math.PI / 2;
       rumble.position.set(sx * (this.halfRoad + 0.35), 0.012, grass.position.z);
       this.dirtShoulders.add(rumble);
+      if (sx > 0) { this._dirtR = d; this._dirtRumbleR = rumble; }
     }
     this.dirtShoulders.visible = false;
     this.group.add(this.dirtShoulders);
@@ -380,7 +380,9 @@ export class Road {
   // median barriers removed from the game — always keep it hidden
   setMedian(on) { this.medianActive = false; this.median.visible = false; }
 
-  // toggle the desert dirt shoulders (drivable sandy strips either side)
+  // toggle the desert dirt shoulders (drivable sandy strips beyond the used
+  // lanes). In desert, traffic only uses lanes 0-2, so lanes 3-4 + this dirt are
+  // an open run with no obstacles.
   setDesertShoulder(on) {
     this.desertShoulder = on;
     if (this.dirtShoulders) this.dirtShoulders.visible = on;

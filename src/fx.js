@@ -26,43 +26,81 @@ export class FX {
     for (let i = 0; i < this.max; i++) this._data.push({ life: 0 });
 
     // ---- tyre tracks (pool of dark quads laid on the road) ----
-    this._tracks = [];
-    this._trackMax = 160;
-    const trackGeo = new THREE.PlaneGeometry(0.34, 2.0);
-    for (let i = 0; i < this._trackMax; i++) {
-      const m = new THREE.Mesh(trackGeo, new THREE.MeshBasicMaterial({ color: 0x0a0a0c, transparent: true, opacity: 0, depthWrite: false }));
-      m.rotation.x = -Math.PI / 2; m.position.y = 0.06; m.renderOrder = 2; m.visible = false;
-      scene.add(m);
-      this._tracks.push({ mesh: m, z: 0, x: 0, life: 0, base: 0 });
+    // ---- continuous tyre-track RIBBONS (one triangle strip per wheel) ----
+    // Each ribbon is a rolling buffer of cross-segments; we append the wheel's
+    // current position each step and scroll the whole buffer back, tracing a
+    // smooth curved trail instead of stamped rectangles.
+    this._trackSegs = 90;                 // segments per ribbon
+    this._trackW = 0.34;                  // track width
+    this._ribbons = [];
+    for (let w = 0; w < 2; w++) {
+      const verts = new Float32Array((this._trackSegs + 1) * 2 * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+      const idx = [];
+      for (let s = 0; s < this._trackSegs; s++) {
+        const a = s * 2, b = s * 2 + 1, cc = (s + 1) * 2, d = (s + 1) * 2 + 1;
+        idx.push(a, b, cc, b, d, cc);
+      }
+      geo.setIndex(idx);
+      const mat = new THREE.MeshBasicMaterial({ color: 0x0a0a0c, transparent: true, opacity: 0.42, depthWrite: false });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.frustumCulled = false; mesh.renderOrder = 2;
+      scene.add(mesh);
+      // ring buffer of {x, z, a(lpha)} points; head is newest
+      const pts = new Array(this._trackSegs + 1).fill(null).map(() => ({ x: 0, z: 999, a: 0 }));
+      this._ribbons.push({ mesh, geo, pts, active: false });
     }
-    this._trackIdx = 0;
   }
 
-  // lay a pair of tyre marks behind the player. strength 0..1 (darker on skids)
+  // add a point to both ribbons at the current wheel positions (strength = darkness)
   dropTrack(x, strength = 0.4) {
-    for (const off of [-0.42, 0.42]) {
-      const t = this._tracks[this._trackIdx];
-      this._trackIdx = (this._trackIdx + 1) % this._trackMax;
-      t.x = x + off; t.z = 1.5; t.life = t.maxlife = 6.0; t.base = Math.min(0.7, 0.25 + strength * 0.5);
-      t.mesh.position.set(t.x, 0.06, t.z);
-      t.mesh.material.opacity = t.base;
-      t.mesh.visible = true;
+    const a = Math.min(1, 0.35 + strength * 0.6);
+    const fresh = !this._penDown; // resuming after a gap => start a clean segment
+    this._penDown = true;
+    for (let w = 0; w < 2; w++) {
+      const r = this._ribbons[w];
+      const off = w === 0 ? -0.42 : 0.42;
+      if (fresh) { r.pts.pop(); r.pts.unshift({ x: x + off, z: 1.7, a: 0 }); } // invisible break
+      r.pts.pop();
+      r.pts.unshift({ x: x + off, z: 1.6, a });
+      r.active = true;
     }
   }
+  penUp() { this._penDown = false; }
 
   clearTracks() {
-    for (const t of this._tracks) { t.life = 0; t.mesh.visible = false; }
+    for (const r of this._ribbons) {
+      for (const pt of r.pts) { pt.z = 999; pt.a = 0; }
+      r.active = false;
+      this._writeRibbon(r);
+    }
   }
 
   updateTracks(distDelta) {
-    for (const t of this._tracks) {
-      if (t.life <= 0) continue;
-      t.z += distDelta;                       // scroll back with the world
-      t.life -= 0.02;                          // slow fade by frame
-      t.mesh.position.z = t.z;
-      t.mesh.material.opacity = Math.max(0, t.base * Math.min(1, t.life / 1.5));
-      if (t.life <= 0 || t.z > 55) { t.mesh.visible = false; t.life = 0; }
+    for (const r of this._ribbons) {
+      if (!r.active) continue;
+      let anyVisible = false;
+      for (const pt of r.pts) {
+        pt.z += distDelta;                // scroll back with the world
+        pt.a -= distDelta * 0.012 + 0.006; // fade with distance/time
+        if (pt.z < 55 && pt.a > 0.01) anyVisible = true;
+      }
+      this._writeRibbon(r);
+      if (!anyVisible) r.active = false;
     }
+  }
+
+  _writeRibbon(r) {
+    const pos = r.geo.attributes.position;
+    for (let i = 0; i < r.pts.length; i++) {
+      const p = r.pts[i];
+      const aa = Math.max(0, Math.min(1, p.a));
+      const hw = this._trackW * 0.5 * aa;   // faded segments shrink to a point => vanish
+      pos.setXYZ(i * 2, p.x - hw, 0.05, p.z);
+      pos.setXYZ(i * 2 + 1, p.x + hw, 0.05, p.z);
+    }
+    pos.needsUpdate = true;
   }
 
   _emit(x, y, z, vx, vy, vz, life, color, grav = -9) {

@@ -139,7 +139,7 @@ class Game {
     this._exit = null;                    // active exit event
     this._nextExitAt = 400 + Math.random() * 250; // distance of first exit prompt
     this._desertUntil = 0;                // distance until which desert area lasts
-    this._exitAnim = 0; this.engine.setBank(0);
+    this._exitAnim = 0; this._desertMerging = false; this.engine.setBank(0);
     this.traffic.desert = false; this.road.setDesertShoulder(false);
     // clear leftover run-state from the previous run
     this.exitSign.visible = false;
@@ -226,11 +226,17 @@ class Game {
 
     // IMPORTANT: traffic uses the *applied* layout (not the pending director one)
     // so oncoming cars only start spawning AFTER we've crossed the intersection.
-    const activeSection = {
+    let activeSection = {
       ...section,
       oncomingLanes: this._appliedOncoming,
       median: false,
     };
+    // DESERT: a narrow road — lane 0 oncoming, lanes 1-2 forward, lanes 3-4 are
+    // open drivable dirt (no traffic spawns there). This gives the "2 forward,
+    // 1 opposing + open outside" feel the desert should have.
+    if (this.traffic.desert) {
+      activeSection = { ...activeSection, lanes: 3, oncomingLanes: 1, allowObstacles: false };
+    }
 
     // terrain (visual theme) — changes over distance with crossfade
     const terr = this.terrain.update(p.distance, dt);
@@ -250,15 +256,19 @@ class Game {
     const distDelta = p.distance - before;
     if (p.invWarn) { this.audio.powerdown(); this.hud.combo('INVINCIBILITY FADING', '#ffd23f'); }
 
-    // tyre tracks: continuous faint marks; darker when steering hard or braking
+    // tyre tracks: a smooth continuous ribbon laid while turning hard or braking
     this.fx.updateTracks(distDelta);
-    if (p.state === 'drive' && !p.airborne && p.speed > 4) {
+    const skidding = p.state === 'drive' && !p.airborne && p.speed > 4 &&
+      (Math.abs(p.vx) > 4.5 || this.input.brake);
+    if (skidding) {
       this._trackDist = (this._trackDist || 0) + distDelta;
-      if (this._trackDist >= 2.2) {
+      if (this._trackDist >= 1.4) {   // dense points => smooth curve
         this._trackDist = 0;
-        const skid = (Math.abs(p.vx) > 6 || this.input.brake) ? 1 : 0.25;
-        this.fx.dropTrack(p.x, skid);
+        this.fx.dropTrack(p.x, Math.min(1, Math.abs(p.vx) / 10 + (this.input.brake ? 0.4 : 0)));
       }
+    } else {
+      this._trackDist = 99; // next skid starts a fresh point immediately
+      this.fx.penUp();      // break the ribbon so it doesn't connect gaps
     }
 
     // exit-lane events (Temple-Run style branch into new areas)
@@ -449,12 +459,29 @@ class Game {
   // EXIT events: a sign appears; be in the exit lane (far right) when you reach
   // it to branch into a new area (desert). Miss it and you stay on the highway.
   _updateExits(distDelta, p) {
-    // end the desert area after its stretch
-    if (this.traffic.desert && p.distance > this._desertUntil) {
-      this.traffic.desert = false; this.road.setDesertShoulder(false);
-      this.terrain.forceTheme?.(null); // back to normal cycling
-      this.audio.setMusicTrack?.('music');
-      this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
+    // desert: warn of the merge ~180m before it ends, then merge back smoothly
+    if (this.traffic.desert && !this._desertMerging && p.distance > this._desertUntil - 180) {
+      this._desertMerging = true;
+      this.traffic.haltSpawns = true;              // let the desert road empty
+      this.road.triggerIntersection?.();           // junction back to the highway
+      this.hud.combo('MERGE AHEAD → HIGHWAY', '#ffd23f');
+    }
+    if (this._desertMerging) {
+      const ix = this.road.intersection;
+      if (ix && ix.visible) this.traffic.turnZ = ix.position.z; // desert cars exit
+      if ((ix && ix.visible && ix.position.z >= 0) || p.distance > this._desertUntil + 60) {
+        // merge complete: banking animation + restore the highway
+        this._desertMerging = false;
+        this.traffic.desert = false; this.road.setDesertShoulder(false);
+        this.traffic.turnZ = null; this.traffic.haltSpawns = false;
+        this._appliedOncoming = 0; this.road.setOncomingLanes(0);
+        this.terrain.forceTheme?.(null);           // resume theme cycling (eases over time)
+        this.audio.setMusicTrack?.('music');
+        this.audio.whoosh();
+        this._exitAnim = 1.2;                       // banking merge animation
+        this.traffic.clearAll();
+        this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
+      }
     }
 
     // schedule a new exit
@@ -483,6 +510,8 @@ class Game {
           // took the exit -> banking off-ramp animation, then desert area
           this.traffic.desert = true; this.road.setDesertShoulder(true);
           this._desertUntil = p.distance + 1100;
+          this._appliedOncoming = 1;        // desert: 1 oncoming lane
+          this.road.setOncomingLanes(1);    // paint the centre line at the divider
           this.terrain.forceTheme?.('sunset'); // sandy desert palette
           this.audio.whoosh();
           this.audio.setMusicTrack?.('musicDesert');
