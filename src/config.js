@@ -92,6 +92,7 @@ export const CFG = {
   ENEMY_INTERVAL: 16,       // seconds between enemy spawns
   ENEMY_MAX: 2,             // max enemy cars at once
   ENEMY_LEAD_DIST: 10,      // metres they drive AHEAD of the player to attack
+  ENEMY_FATIGUE_TIME: 20,   // seconds at full pace before they tire & drift back
   ENEMY_FIRE_INTERVAL: 2.6, // seconds between grenade lobs
   GRENADE_SPEED: 9,         // grenade backward speed (slow & dodgeable)
   GRENADE_FUSE: 2.5,        // seconds a landed grenade sits before auto-detonating

@@ -244,8 +244,11 @@ export class Road {
     this.group.add(this.intersection);
   }
 
-  // place the intersection at the far horizon (called when a transition starts)
+  // place the intersection at the far horizon (called when a transition starts).
+  // If one is already scrolling in, DON'T reset it — resetting made it jump
+  // backward (looked like it moved with the car / never arrived).
   triggerIntersection() {
+    if (this.intersection.visible) return;
     this.intersection.visible = true;
     this.intersection.position.z = -CFG.VISIBLE_AHEAD + 4;
   }

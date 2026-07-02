@@ -97,7 +97,7 @@ export class Traffic {
     e.collected = false;       // coin collected flag (reset on reuse!)
     e.cleared = false;         // jumped-over flag (reset on reuse!)
     e.knocked = false; e.knockY = 0; e.knockVX = 0; e.knockVY = 0; e.knockSpin = 0;
-    e.turning = false; e.turnYaw = 0;
+    e.turning = false; e.turnYaw = 0; e.turnDir = 0;
     e.used = false;
     // power-up type + recolour the icon
     if (type === 'powerup') {
@@ -190,9 +190,12 @@ export class Traffic {
     if (this._nextRowZ === undefined) this._nextRowZ = -60;
     while (this._nextRowZ > farZ) {
       this._spawnRow(section, this._nextRowZ, onc);
-      // row spacing shrinks with difficulty (denser) but never below a safe min
+      // row spacing: denser with difficulty BUT sparser at high player speed —
+      // at speed you need reaction room, so fewer cars on the road.
       const d = this.difficulty;
-      const gap = (CFG.ROW_GAP_MAX - (CFG.ROW_GAP_MAX - CFG.ROW_GAP_MIN) * d) * (0.85 + Math.random() * 0.4);
+      const sp = this.speed01 ?? 0;
+      let gap = (CFG.ROW_GAP_MAX - (CFG.ROW_GAP_MAX - CFG.ROW_GAP_MIN) * d) * (0.85 + Math.random() * 0.4);
+      gap *= 1 + sp * 0.9; // up to ~2x spacing at max speed
       this._nextRowZ -= gap;
     }
 
@@ -226,7 +229,10 @@ export class Traffic {
 
     // fill the other forward lanes with a probability that rises with difficulty
     const d = this.difficulty;
-    const fillP = (CFG.ROW_FILL_BASE + (CFG.ROW_FILL_MAX - CFG.ROW_FILL_BASE) * d) * (this.thin ?? 1);
+    const spd = this.speed01 ?? 0;
+    const fillP = (CFG.ROW_FILL_BASE + (CFG.ROW_FILL_MAX - CFG.ROW_FILL_BASE) * d)
+      * (this.thin ?? 1)
+      * (1 - spd * 0.45); // fewer cars per row at high speed
     // keep the ramp lane clear for a few rows so NPCs don't hit the ramp
     let rampLane = -1;
     if (this._rampLaneRows > 0) { rampLane = this._rampLane; this._rampLaneRows--; }
@@ -311,21 +317,27 @@ export class Traffic {
         }
       }
 
-      // during a layout transition, cars that reach the junction TURN LEFT and
-      // leave the road (they exit at the intersection instead of driving through)
+      // during a layout transition, cars that reach the junction turn off to
+      // their NEAREST side (left lanes exit left, right lanes exit right) and
+      // leave along the cross road — smooth, natural exits.
       if (this.turnZ != null && !e.turning && !e.knocked &&
           (e.type === 'car' || e.type === 'truck') &&
-          Math.abs(e.z - this.turnZ) < 6) {
+          Math.abs(e.z - this.turnZ) < 5) {
         e.turning = true;
+        e.turnDir = e.x < 0 ? -1 : 1;          // exit toward the nearer side
+        e.turnSpeed = Math.max(8, e.speed);     // keep their pace through the turn
       }
       if (e.turning) {
-        // steer off to the left, rotating to face the side road
-        e.x -= 14 * dt;
-        e.turnYaw = Math.min((e.turnYaw || 0) + dt * 2.2, Math.PI / 2);
-        e.mesh.rotation.y = (e.oncoming ? Math.PI : 0) + e.turnYaw;
-        e.z += playerSpeed * dt * 0.4; // roughly holds at the junction as it exits
+        // stay AT the junction in world space (full scroll comp) while easing out
+        e.z += playerSpeed * dt;
+        // smooth yaw toward the side road, speed ramps sideways as yaw completes
+        const targetYaw = e.turnDir < 0 ? Math.PI / 2 : -Math.PI / 2;
+        e.turnYaw = e.turnYaw + (targetYaw - (e.turnYaw || 0)) * Math.min(1, dt * 3);
+        e.mesh.rotation.y = e.turnYaw;
+        const turnFrac = Math.min(1, Math.abs(e.turnYaw) / (Math.PI / 2));
+        e.x += e.turnDir * e.turnSpeed * turnFrac * dt;
         e.mesh.position.set(e.x, 0, e.z);
-        if (e.x < -this.road.halfRoad - 14) { // fully off-road: despawn
+        if (Math.abs(e.x) > this.road.halfRoad + 16) { // fully off: despawn
           e.mesh.visible = false; this.pools[e.poolKey].push(e); this.active.splice(i, 1);
           continue;
         }

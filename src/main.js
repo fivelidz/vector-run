@@ -183,6 +183,7 @@ class Game {
     // always begin AFTER the intersection, never abruptly mid-traffic.
     const section = this.director.update(p.distance);
     this.traffic.setDifficulty(this.director.difficulty);
+    this.traffic.speed01 = p.speed01();
     this.traffic.thin = this.enemies.cars.some((c) => c.mesh.visible && c.alive) ? CFG.ENEMY_NPC_THIN : 1;
 
     // ---- smooth layout transitions (no teleport-deleting of cars) ----
