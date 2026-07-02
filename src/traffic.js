@@ -68,11 +68,8 @@ export class Traffic {
       const tint = e.mesh.userData.tint;
       if (tint && tint.length) {
         const base = new THREE.Color(color);
-        // body = base, skirt/cabin = slightly darker shade for two-tone depth
-        tint[0].material.color.copy(base);
-        for (let i = 1; i < tint.length; i++) {
-          tint[i].material.color.copy(base).offsetHSL(0, 0, i === 1 ? -0.14 : -0.05);
-        }
+        // body, cabin AND roof all use the exact same body colour
+        for (let i = 0; i < tint.length; i++) tint[i].material.color.copy(base);
       }
     }
     return e;
@@ -97,7 +94,7 @@ export class Traffic {
     e.collected = false;       // coin collected flag (reset on reuse!)
     e.cleared = false;         // jumped-over flag (reset on reuse!)
     e.knocked = false; e.knockY = 0; e.knockVX = 0; e.knockVY = 0; e.knockSpin = 0;
-    e.turning = false; e.turnYaw = 0; e.turnDir = 0;
+    e.turning = false; e.turnYaw = 0; e.turnDir = 0; e.changingTo = null;
     e.used = false;
     // power-up type + recolour the icon
     if (type === 'powerup') {
@@ -181,8 +178,16 @@ export class Traffic {
   // lane (|delta| <= 1) so there is ALWAYS a continuous drivable path.
   // Oncoming lanes spawn independently (they're a constant stream you weave).
   _spawnAhead(section) {
-    // during a layout transition, stop spawning so the road empties naturally
-    if (this.haltSpawns) { this._nextRowZ = -CFG.VISIBLE_AHEAD; this._openLane = undefined; return; }
+    // during a layout transition, stop spawning so the road empties naturally.
+    // Also clamp the per-lane spawn cursors — they kept advancing during the
+    // halt, so when spawns resumed the first oncoming cars appeared MID-VIEW
+    // (the "teleport in" bug). Pinning them to the horizon fixes that.
+    if (this.haltSpawns) {
+      this._nextRowZ = -CFG.VISIBLE_AHEAD;
+      this._openLane = undefined;
+      this.laneNextSpawn.fill(-CFG.VISIBLE_AHEAD);
+      return;
+    }
     const farZ = -CFG.VISIBLE_AHEAD;
     const onc = section.oncomingLanes || 0;
 
@@ -302,7 +307,7 @@ export class Traffic {
 
       // NPC same-direction cars slow down behind a slower vehicle in their lane
       // (and flash an indicator). Keeps traffic from clipping through trucks.
-      if (e.type === 'car' && !e.oncoming && !e.knocked) {
+      if (e.type === 'car' && !e.oncoming && !e.knocked && !e.turning) {
         let aheadSlow = null;
         for (const o of this.active) {
           if (o === e || o.oncoming) continue;
@@ -313,7 +318,34 @@ export class Traffic {
         }
         if (aheadSlow) {
           e.speed += (aheadSlow.speed - e.speed) * Math.min(1, dt * 2); // match slower
-          if (e.mesh.userData.headlights) e.mesh.userData.headlights.emissiveIntensity = (Math.sin(performance.now() * 0.012) > 0) ? 1.6 : 0.6; // blinker pulse
+          if (e.mesh.userData.headMat) e.mesh.userData.headMat.emissiveIntensity = (Math.sin(performance.now() * 0.012) > 0) ? 2.0 : 0.5; // blinker pulse
+        }
+
+        // RAMP ahead in my lane? indicate & change lanes instead of phasing through
+        if (e.changingTo == null) {
+          for (const r of this.active) {
+            if (r.type !== 'ramp' || r.lane !== e.lane) continue;
+            const gap = r.z - e.z;
+            if (gap < 0 && gap > -35) {
+              const onc = this.road.oncomingLanes || 0;
+              const options = [];
+              if (e.lane + 1 <= CFG.NUM_LANES - 1) options.push(e.lane + 1);
+              if (e.lane - 1 >= onc) options.push(e.lane - 1);
+              if (options.length) e.changingTo = options[(Math.random() * options.length) | 0];
+              break;
+            }
+          }
+        }
+      }
+      // execute a lane change (indicator blinking, smooth slide over)
+      if (e.changingTo != null && !e.knocked && !e.turning) {
+        const tx = this.road.laneX(e.changingTo);
+        e.x += (tx - e.x) * Math.min(1, dt * 1.6);
+        e.mesh.position.x = e.x;
+        if (e.mesh.userData.headMat) e.mesh.userData.headMat.emissiveIntensity = (Math.sin(performance.now() * 0.016) > 0) ? 2.2 : 0.4;
+        if (Math.abs(tx - e.x) < 0.15) {
+          e.lane = e.changingTo; e.changingTo = null;
+          if (e.mesh.userData.headMat) e.mesh.userData.headMat.emissiveIntensity = 1.0;
         }
       }
 

@@ -238,7 +238,7 @@ class Game {
     };
 
     // terrain (visual theme) — changes over distance with crossfade
-    const terr = this.terrain.update(p.distance);
+    const terr = this.terrain.update(p.distance, dt);
     if (terr.night !== this._night) {
       this._night = terr.night;
       setCarNight(p.mesh, this._night);
@@ -386,7 +386,7 @@ class Game {
       if (ev === 'busted') this._gameOver('busted');
       if (ev === 'escaped') { this.score += 500; this.hud.combo('ESCAPED! +500', '#5dff9b'); }
       if (ev === 'cruiserSpawn') this.audio.sirenBurst();
-      if (ev === 'copCrash') { this.fx.sparks(d?.x ?? p.x, 0.8, d?.z ?? 8, 18, 0x4ea3ff); this.fx.smoke(d?.x ?? p.x, 0.5, d?.z ?? 8, 10); this.audio.crash(true); this.score += 250; this.hud.combo('COP WRECKED! +250', '#4ea3ff'); }
+      if (ev === 'copCrash') { this.audio.stopSiren(); this.fx.sparks(d?.x ?? p.x, 0.8, d?.z ?? 8, 18, 0x4ea3ff); this.fx.smoke(d?.x ?? p.x, 0.5, d?.z ?? 8, 10); this.audio.crash(true); this.score += 250; this.hud.combo('COP WRECKED! +250', '#4ea3ff'); }
     }, activeSection);
 
     // distance milestones (every 1km) — score bonus + callout
@@ -454,7 +454,7 @@ class Game {
     }
 
     // schedule a new exit
-    if (!this._exit && p.distance > this._nextExitAt && !this.traffic.desert && !this._pendingLayout) {
+    if (!this._exit && p.distance > this._nextExitAt && !this.traffic.desert && !this._pendingLayout && Save.settings.exits !== false) {
       const exitLane = CFG.NUM_LANES - 1; // far-right lane
       this._exit = { lane: exitLane, z: -CFG.VISIBLE_AHEAD * 0.95, announced: false, taken: false };
       // gantry spans the whole road (centred); the ARROW hangs over the exit lane

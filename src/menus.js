@@ -55,6 +55,12 @@ export class Menus {
     const q = document.getElementById('opt-quality'); q.value = s.quality;
     q.addEventListener('change', () => { Save.setSetting('quality', q.value); this.onQualityChange?.(q.value); });
 
+    // road feature toggles
+    const tw = document.getElementById('opt-twoway');
+    if (tw) { tw.checked = s.twoway !== false; tw.addEventListener('change', () => Save.setSetting('twoway', tw.checked)); }
+    const ex = document.getElementById('opt-exits');
+    if (ex) { ex.checked = s.exits !== false; ex.addEventListener('change', () => Save.setSetting('exits', ex.checked)); }
+
     // steering tuning sliders (live)
     const tune = Save.tune;
     const bindTune = (id, key) => {

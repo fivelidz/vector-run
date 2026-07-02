@@ -134,7 +134,7 @@ export class Police {
       if (this.traffic) {
         for (const o of this.traffic.active) {
           if (o.knocked || o.collected) continue;
-          if ((o.type === 'car' || o.type === 'truck') &&
+          if ((o.type === 'car' || o.type === 'truck' || o.type === 'block') &&
               Math.abs(o.z - c.z) < CFG.CAR_HALF_L + 1.0 && Math.abs(o.x - c.x) < CFG.CAR_HALF_W + 0.7) {
             // cop crashes; the NPC gets knocked too
             c.crashed = true;

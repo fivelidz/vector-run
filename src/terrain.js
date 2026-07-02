@@ -94,12 +94,12 @@ export class Terrain {
     const t = THEMES.find((x) => x.id === id);
     if (!t) return;
     this._forced = t; this._propThemeId = t.id; this.current = t;
-    this.road.setTheme(t); this._applyInstant(t);
+    this.road.setTheme(t); // lighting eases toward it over time in update()
   }
 
-  update(distance) {
+  update(distance, dt = 1 / 60) {
     if (this._forced) {
-      this._applyBlend(this._forced, this._forced, 0);
+      this._applyBlend(this._forced, this._forced, 0, dt); // eases over time
       return { name: this._forced.name, night: this._forced.night };
     }
     const cycle = distance / THEME_DISTANCE;
@@ -126,7 +126,7 @@ export class Terrain {
     }
     this._lastBase = baseIdx;
     this.blend = t;
-    this._applyBlend(a, b, t);
+    this._applyBlend(a, b, t, dt);
     return { name: t > 0.5 ? b.name : a.name, night: (t > 0.5 ? b : a).night };
   }
 
@@ -136,56 +136,67 @@ export class Terrain {
     return out;
   }
 
-  _applyBlend(a, b, t) {
+  _applyBlend(a, b, t, dt = 1 / 60, instant = false) {
     const e = this.engine, c = this._c;
-    // Staggered transition so the new theme appears AT THE HORIZON first and
-    // sweeps toward the player, instead of the whole scene flipping at once:
-    //   • tFar (sky/fog/distant hills) leads  — runs 0..1 over the first ~70%
-    //   • tNear (ground/road/lights) lags     — runs 0..1 over the last ~70%
     const tFar = clamp01(t / 0.7);
     const tNear = clamp01((t - 0.3) / 0.7);
 
-    e.scene.background = this._lerpColor(c.sky, a.sky, b.sky, tFar).clone();
-    if (e.scene.fog) {
-      this._lerpColor(c.fog, a.fog, b.fog, tFar);
-      e.scene.fog.color.copy(c.fog);
-      e.scene.fog.near = a.fogNear + (b.fogNear - a.fogNear) * tNear;
-      e.scene.fog.far = a.fogFar + (b.fogFar - a.fogFar) * tFar;
-    }
-    e.renderer.setClearColor(c.sky, 1);
-    // hills sit at the horizon -> follow the far transition
-    if (this.road.hillsMesh) this.road.hillsMesh.material.color.copy(this._lerpColor(c.groundAlt, a.groundAlt, b.groundAlt, tFar));
+    // ---- compute TARGET values (staggered far->near across the window) ----
+    const tgt = {
+      sky: this._lerpColor(new THREE.Color(), a.sky, b.sky, tFar).clone(),
+      fog: this._lerpColor(new THREE.Color(), a.fog, b.fog, tFar).clone(),
+      fogNear: a.fogNear + (b.fogNear - a.fogNear) * tNear,
+      fogFar: a.fogFar + (b.fogFar - a.fogFar) * tFar,
+      hills: this._lerpColor(new THREE.Color(), a.groundAlt, b.groundAlt, tFar).clone(),
+      sun: this._lerpColor(new THREE.Color(), a.sunColor, b.sunColor, t).clone(),
+      sunInt: a.sunInt + (b.sunInt - a.sunInt) * t,
+      hemiSky: this._lerpColor(new THREE.Color(), a.hemiSky, b.hemiSky, t).clone(),
+      hemiGround: this._lerpColor(new THREE.Color(), a.hemiGround, b.hemiGround, t).clone(),
+      hemiInt: a.hemiInt + (b.hemiInt - a.hemiInt) * t,
+      ambInt: a.ambInt + (b.ambInt - a.ambInt) * t,
+      ground: this._lerpColor(new THREE.Color(), a.ground, b.ground, tNear).clone(),
+      roadCol: this._lerpColor(new THREE.Color(), a.road, b.road, tNear).clone(),
+    };
 
-    // lights ease across the whole window (mid)
-    if (e.sun) {
-      this._lerpColor(c.sun, a.sunColor, b.sunColor, t);
-      e.sun.color.copy(c.sun);
-      e.sun.intensity = a.sunInt + (b.sunInt - a.sunInt) * t;
+    // ---- ease the ACTUAL state toward targets over TIME (no jumps, ever) ----
+    if (!this._s || instant) this._s = tgt;
+    else {
+      const al = 1 - Math.exp(-dt * 1.4); // ~0.7s time constant
+      const s = this._s;
+      s.sky.lerp(tgt.sky, al); s.fog.lerp(tgt.fog, al); s.hills.lerp(tgt.hills, al);
+      s.sun.lerp(tgt.sun, al); s.hemiSky.lerp(tgt.hemiSky, al); s.hemiGround.lerp(tgt.hemiGround, al);
+      s.ground.lerp(tgt.ground, al); s.roadCol.lerp(tgt.roadCol, al);
+      s.fogNear += (tgt.fogNear - s.fogNear) * al;
+      s.fogFar += (tgt.fogFar - s.fogFar) * al;
+      s.sunInt += (tgt.sunInt - s.sunInt) * al;
+      s.hemiInt += (tgt.hemiInt - s.hemiInt) * al;
+      s.ambInt += (tgt.ambInt - s.ambInt) * al;
     }
-    if (e.hemi) {
-      e.hemi.color.copy(this._lerpColor(c.hemiSky, a.hemiSky, b.hemiSky, t));
-      e.hemi.groundColor.copy(this._lerpColor(c.hemiGround, a.hemiGround, b.hemiGround, t));
-      e.hemi.intensity = a.hemiInt + (b.hemiInt - a.hemiInt) * t;
-    }
-    if (e.amb) e.amb.intensity = a.ambInt + (b.ambInt - a.ambInt) * t;
+    const s = this._s;
 
-    // GROUND + ROAD: a boundary sweeps from the horizon toward the player so the
-    // new biome's ground colour FLOWS DOWN the road (not a whole-scene flip).
-    if (t <= 0) {
-      this.road.setColors(a.ground, a.groundAlt, a.road); // settled: uniform
-    } else if (t >= 1) {
-      this.road.setColors(b.ground, b.groundAlt, b.road);
-    } else {
-      // boundaryZ: -VISIBLE_AHEAD (far) at t=0  ->  +VISIBLE_BEHIND (past) at t=1
+    // ---- apply the smoothed state ----
+    e.scene.background = s.sky;
+    if (e.scene.fog) { e.scene.fog.color.copy(s.fog); e.scene.fog.near = s.fogNear; e.scene.fog.far = s.fogFar; }
+    e.renderer.setClearColor(s.sky, 1);
+    if (this.road.hillsMesh) this.road.hillsMesh.material.color.copy(s.hills);
+    if (e.sun) { e.sun.color.copy(s.sun); e.sun.intensity = s.sunInt; }
+    if (e.hemi) { e.hemi.color.copy(s.hemiSky); e.hemi.groundColor.copy(s.hemiGround); e.hemi.intensity = s.hemiInt; }
+    if (e.amb) e.amb.intensity = s.ambInt;
+
+    // GROUND + ROAD: spatial horizon sweep during distance transitions; the
+    // time-smoothed uniform colours otherwise (covers forced-theme changes too).
+    if (t > 0 && t < 1) {
       const from = -CFG_VISIBLE_AHEAD, to = CFG_VISIBLE_BEHIND;
       const boundaryZ = from + (to - from) * t;
       this.road.setGroundBlend(boundaryZ, a.ground, b.ground, a.road, b.road);
+    } else {
+      this.road.setColors(s.ground, s.ground, s.roadCol);
     }
   }
 
   _applyInstant(theme) {
     this._lastBase = 0;
-    this._applyBlend(theme, theme, 0);
+    this._applyBlend(theme, theme, 0, 1 / 60, true); // instant (run start only)
   }
 }
 

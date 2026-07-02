@@ -153,11 +153,33 @@ export class Audio {
     // continuous loop was annoying)
   }
 
-  // single siren wail, played once when a police car shows up
+  // short siren wail when a police car shows up (~1.8s, fades out). We keep a
+  // handle so it can be CUT OFF early if the cruiser crashes before arriving.
   sirenBurst() {
-    if (!this._play('siren', { vol: 0.45 })) {
+    if (!this.ctx || !this.enabled) return;
+    this.stopSiren(); // never stack bursts
+    if (this.buffers.siren) {
+      const t = this.ctx.currentTime;
+      const src = this.ctx.createBufferSource(); src.buffer = this.buffers.siren;
+      const g = this.ctx.createGain(); g.gain.value = 0.45;
+      src.connect(g); g.connect(this.master);
+      g.gain.setValueAtTime(0.45, t + 1.1);
+      g.gain.linearRampToValueAtTime(0, t + 1.8);   // shortened + fade-out
+      src.start(t); src.stop(t + 1.9);
+      src.onended = () => { if (this._sirenSrc && this._sirenSrc.src === src) this._sirenSrc = null; };
+      this._sirenSrc = { src, gain: g };
+    } else {
       this._blip(700, 0.5, 'sine', 0.2, 950);
       setTimeout(() => this._blip(950, 0.5, 'sine', 0.18, 700), 450);
+    }
+  }
+  // cut an in-flight siren burst (cruiser crashed / despawned)
+  stopSiren() {
+    if (this._sirenSrc && this.ctx) {
+      const { src, gain } = this._sirenSrc;
+      gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.05);
+      setTimeout(() => { try { src.stop(); } catch (e) {} }, 150);
+      this._sirenSrc = null;
     }
   }
 
@@ -166,6 +188,7 @@ export class Audio {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     this._stopLoop('engine'); this._stopLoop('siren'); this._stopLoop('music');
+    this.stopSiren();
     if (this.engineGain) this.engineGain.gain.setTargetAtTime(0, t, 0.12);
     if (this.synthSirenGain) this.synthSirenGain.gain.setTargetAtTime(0, t, 0.15);
   }

@@ -2,6 +2,7 @@
 // A section is active for a stretch of distance; it sets lane layout, oncoming
 // lanes, median, blocked lanes, and which hazards/pickups can spawn.
 import { CFG } from './config.js';
+import { Save } from './save.js';
 
 // Each template: function(difficulty) -> config + length range.
 const TEMPLATES = {
@@ -57,7 +58,11 @@ export class SectionDirector {
   _pickNext(distance) {
     const d = this.difficulty;
     // weighted random, avoid repeating same template back-to-back
-    const candidates = ORDER.filter((k) => k !== this.prevKey).map((k) => {
+    const allowTwoway = Save.settings.twoway !== false;
+    const candidates = ORDER
+      .filter((k) => k !== this.prevKey)
+      .filter((k) => allowTwoway || (k !== 'twoway' && k !== 'median'))
+      .map((k) => {
       const c = TEMPLATES[k](d);
       return { key: k, cfg: c, w: Math.max(0.05, c.weight) };
     });

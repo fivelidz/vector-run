@@ -75,6 +75,10 @@ export function makeCar(color = PAL.player, kind = 'car') {
     const glassMat = smooth(0x18222e, { rough: 0.05, metal: 0.85, emissive: 0x0a1622, emissiveIntensity: 0.2 });
     const glass = roundedBox(W * 0.74, 0.42, L * 0.46, 0.2, glassMat);
     glass.position.set(0, 1.12, -0.05); grp.add(glass);
+    // body-coloured ROOF panel on top (so the roof matches the body, not glass)
+    const roof = roundedBox(W * 0.7, 0.09, L * 0.4, 0.04, cabinMat.clone());
+    roof.position.set(0, 1.34, -0.05);
+    grp.add(roof); grp.userData.tint.push(roof);
     // thin pillar accents keep it reading as windows
     const pillarMat = smooth(shade(color, -0.1));
     for (const sx of [-1, 1]) { const pl = box(0.05, 0.4, L * 0.46, pillarMat); pl.position.set(sx * W * 0.39, 1.1, -0.05); grp.add(pl); }

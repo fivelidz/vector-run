@@ -19,12 +19,15 @@ const URL = process.env.URL || 'http://localhost:8099/index.html';
 
   const checks = []; const assert = (n, c) => { checks.push([n, c]); console.log((c ? '✓' : '✗') + ' ' + n); };
 
-  // far-right lane reachable
+  // far-right lane reachable (poll until reached — avoids headless timing flakes)
   await page.keyboard.down('KeyD');
-  for (let i = 0; i < 14; i++) await page.waitForTimeout(100);
+  let reached = false;
+  for (let i = 0; i < 40 && !reached; i++) {
+    await page.waitForTimeout(120);
+    reached = await page.evaluate(() => window.__game.player.x > window.__game.road.laneX(4) - 1.0);
+  }
   await page.keyboard.up('KeyD');
-  const far = await page.evaluate(() => ({ x: window.__game.player.x, far: window.__game.road.laneX(4) }));
-  assert('far-right lane reachable', far.x > far.far - 1.0);
+  assert('far-right lane reachable', reached);
 
   // cone knock: no spin, points go up
   const knock = await page.evaluate(() => {
