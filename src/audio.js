@@ -177,6 +177,12 @@ export class Audio {
   throwSfx() { if (!this._play('throw', { vol: 0.6 })) this._blip(500, 0.15, 'sine', 0.2, 900); }
   combo() { if (!this._play('combo', { vol: 0.6 })) this._blip(800, 0.12, 'square', 0.18, 1200); }
   whoosh() { if (!this._play('whoosh', { vol: 0.7 })) this._blip(200, 0.6, 'sine', 0.25, 1200); }
+  // invincibility about to end — descending warning beeps
+  powerdown() {
+    if (!this.ctx || !this.enabled) return;
+    this._blip(900, 0.12, 'square', 0.22, 500);
+    setTimeout(() => this._blip(700, 0.14, 'square', 0.2, 380), 160);
+  }
 
   // ---------- synth fallback engine + siren ----------
   _buildSynthEngine() {

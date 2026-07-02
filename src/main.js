@@ -142,7 +142,7 @@ class Game {
     this._exit = null;                    // active exit event
     this._nextExitAt = 700 + Math.random() * 500; // distance of first exit prompt
     this._desertUntil = 0;                // distance until which desert area lasts
-    this.traffic.desert = false;
+    this.traffic.desert = false; this.road.desertShoulder = false;
     this.hud.clearWanted();
     this.score = 0; this.runCoins = 0; this.comboMult = 1; this.comboTimer = 0;
     this._acc = 0; this._last = performance.now(); // fresh clock for the run
@@ -188,25 +188,31 @@ class Game {
     this.traffic.setDifficulty(this.director.difficulty);
     this.traffic.thin = this.enemies.cars.some((c) => c.mesh.visible && c.alive) ? CFG.ENEMY_NPC_THIN : 1;
 
+    // ---- smooth layout transitions (no teleport-deleting of cars) ----
+    // Phase 1: a change is due -> STOP spawning traffic ahead so the road
+    //          naturally EMPTIES as existing cars scroll past you. Announce it.
+    // Phase 2: once the road ahead is clear AND we've travelled the transition
+    //          distance, the intersection passes and the new layout begins.
     const layoutChanged = section.oncomingLanes !== this._appliedOncoming || section.median !== this._appliedMedian;
     if (layoutChanged && !this._pendingLayout) {
-      // schedule the change at an incoming intersection. Track our OWN countdown
-      // distance (independent of the shared intersection mesh used by terrain/exit).
+      // announce it; stop spawning so the road empties, and send an INTERSECTION
+      // in from the horizon. The layout only flips when you DRIVE THROUGH it.
       this._pendingLayout = { oncomingLanes: section.oncomingLanes, median: section.median };
-      this._pendingLayoutIn = CFG.VISIBLE_AHEAD; // travel this far before it applies
+      this.traffic.haltSpawns = true;
       this.road.triggerIntersection?.();
       this.hud.combo(section.oncomingLanes > 0 ? '⇅ TWO-WAY AHEAD' : 'JUNCTION AHEAD', '#ffd23f');
     }
     if (this._pendingLayout) {
-      this._pendingLayoutIn -= p.speed * dt; // distance travelled this frame
-      if (this._pendingLayoutIn <= 0) {
-        // intersection reached the player: clear ALL traffic & apply the new layout
-        this.traffic.clearAll();
+      // apply exactly when the intersection mesh reaches the player (z >= 0),
+      // i.e. as you drive through the junction — the logical transition feature.
+      const ix = this.road.intersection;
+      if (ix && ix.visible && ix.position.z >= 0) {
         this._appliedOncoming = this._pendingLayout.oncomingLanes;
         this._appliedMedian = this._pendingLayout.median;
         this.road.setMedian(this._pendingLayout.median);
         this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
         this._pendingLayout = null;
+        this.traffic.haltSpawns = false;         // resume spawning in the new layout
       }
     }
     p.setLaneCount(section.lanes);
@@ -235,6 +241,7 @@ class Game {
       onLand: (x) => { this.fx.smoke(x, 0.2, 0, 10); this.engine.addShake(0.18); this.audio.land?.(); },
     });
     const distDelta = p.distance - before;
+    if (p.invWarn) { this.audio.powerdown(); this.hud.combo('INVINCIBILITY FADING', '#ffd23f'); }
 
     // tyre tracks: continuous faint marks; darker when steering hard or braking
     this.fx.updateTracks(distDelta);
@@ -427,7 +434,7 @@ class Game {
   _updateExits(distDelta, p) {
     // end the desert area after its stretch
     if (this.traffic.desert && p.distance > this._desertUntil) {
-      this.traffic.desert = false;
+      this.traffic.desert = false; this.road.desertShoulder = false;
       this.terrain.forceTheme?.(null); // back to normal cycling
       this.audio.setMusicTrack?.('music');
       this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
@@ -455,7 +462,7 @@ class Game {
         const inLane = Math.abs(p.x - this.road.laneX(e.lane)) < CFG.LANE_WIDTH * 0.7;
         if (inLane) {
           // took the exit -> desert area for a stretch
-          this.traffic.desert = true;
+          this.traffic.desert = true; this.road.desertShoulder = true;
           this._desertUntil = p.distance + 900;
           this.terrain.forceTheme?.('sunset'); // sandy desert palette
           this.road.triggerIntersection?.();

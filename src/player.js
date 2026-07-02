@@ -118,7 +118,11 @@ export class Player {
   hasInvincible() { return this.fx.invincible > 0; }
   hasMagnet() { return this.fx.magnet > 0; }
   _tickPowerups(dt) {
+    const prevInv = this.fx.invincible;
     for (const k of ['invincible', 'nitro', 'magnet']) if (this.fx[k] > 0) this.fx[k] = Math.max(0, this.fx[k] - dt);
+    // fire a one-shot "wearing off" flag when invincibility crosses ~1.6s left
+    this.invWarn = false;
+    if (prevInv > 1.6 && this.fx.invincible <= 1.6 && this.fx.invincible > 0) this.invWarn = true;
   }
 
   // ---- jump ----
@@ -222,6 +226,12 @@ export class Player {
     let maxX = road.laneX(nLanes - 1) + CFG.LANE_WIDTH * 0.45;
     minX = Math.max(minX, -road.drivableHalf);
     maxX = Math.min(maxX, road.drivableHalf);
+    // desert: you may drive onto the sandy shoulder either side (watch for rocks)
+    if (road.desertShoulder) {
+      const sh = road.halfRoad + CFG.LANE_WIDTH * 1.3;
+      if (!road.medianActive) minX = -sh;
+      maxX = sh;
+    }
     this.minLaneX = minX; this.maxLaneX = maxX;
 
     // ---- drift steering (tunable, predictable) ----

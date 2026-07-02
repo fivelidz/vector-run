@@ -16,7 +16,7 @@ const TYPES = {
   block:   { w: 1.0, l: 2.1, kind: 'heavy', mesh: 'block' },    // parked cruiser
   ramp:    { w: 1.2, l: 1.6, kind: 'ramp', mesh: 'ramp' },      // launch pad
   powerup: { w: 0.8, l: 0.8, kind: 'powerup', mesh: 'powerup' },// power-up pickup
-  rock:    { w: 0.85, l: 0.85, kind: 'knock', mesh: 'rock' },   // desert obstacle (knock)
+  rock:    { w: 0.85, l: 0.85, kind: 'knock', mesh: 'rock' },   // desert shoulder hazard
 };
 
 export class Traffic {
@@ -41,6 +41,7 @@ export class Traffic {
     this.spawnCursor = -CFG.VISIBLE_AHEAD;
     this._nextRowZ = -60;        // first row spawns a bit ahead
     this._openLane = undefined;  // guaranteed-open path lane
+    this.haltSpawns = false;
   }
 
   _obtain(poolKey, color) {
@@ -56,6 +57,7 @@ export class Traffic {
       else if (poolKey === 'block') mesh = makePolice();
       else if (poolKey === 'ramp') mesh = makeRamp();
       else if (poolKey === 'rock') mesh = makeRock();
+
       else if (poolKey === 'powerup') mesh = makePowerup('invincible');
       this.group.add(mesh);
       e = { mesh, poolKey };
@@ -85,7 +87,7 @@ export class Traffic {
     e.w = t.w; e.l = t.l;
     e.lane = laneIdx;
     e.z = z;
-    e.x = this.road.laneX(laneIdx);
+    e.x = (opts.x != null) ? opts.x : this.road.laneX(laneIdx);
     e.oncoming = !!opts.oncoming;
     e.speed = opts.speed ?? 0; // forward world speed of this entity (same dir)
     e.notified = false;        // near-miss flagged
@@ -177,6 +179,8 @@ export class Traffic {
   // lane (|delta| <= 1) so there is ALWAYS a continuous drivable path.
   // Oncoming lanes spawn independently (they're a constant stream you weave).
   _spawnAhead(section) {
+    // during a layout transition, stop spawning so the road empties naturally
+    if (this.haltSpawns) { this._nextRowZ = -CFG.VISIBLE_AHEAD; this._openLane = undefined; return; }
     const farZ = -CFG.VISIBLE_AHEAD;
     const onc = section.oncomingLanes || 0;
 
@@ -237,6 +241,14 @@ export class Traffic {
       }
     }
 
+    // desert shoulder: SPARSE rocks off to the sides (beyond the lanes). You can
+    // drive onto the sand to dodge traffic, but must avoid the occasional rock.
+    if (this.desert && Math.random() < 0.35) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const shoulderX = side * (this.road.halfRoad + 1.2 + Math.random() * 3.5);
+      this.spawnEntity('rock', 0, z, { x: shoulderX });
+    }
+
     // open-lane reward: ramp, rare invincibility power-up, or coin
     const rr = Math.random();
     if (rr < 0.08) {
@@ -258,9 +270,9 @@ export class Traffic {
     const sameSp = CFG.TRAFFIC_SPEED_SAME[0] + Math.random() * (CFG.TRAFFIC_SPEED_SAME[1] - CFG.TRAFFIC_SPEED_SAME[0]);
     const r = Math.random();
     if (this.desert) {
-      // desert area: rocks & the odd truck, fewer cars
-      if (r < 0.5) { this.spawnEntity('rock', lane, z); return; }
-      if (r < 0.62) { this.spawnEntity('truck', lane, z, { speed: sameSp * 0.6 }); return; }
+      // desert: mostly sparse cars/trucks on the road (rocks are on the shoulder,
+      // spawned separately in _spawnRow), fewer obstacles in-lane.
+      if (r < 0.15) { this.spawnEntity('truck', lane, z, { speed: sameSp * 0.6 }); return; }
       this.spawnEntity('car', lane, z, { speed: sameSp });
       return;
     }
