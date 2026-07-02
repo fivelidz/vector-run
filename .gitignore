@@ -6,6 +6,9 @@ node_modules/
 # meshy state (kept out of repo; regenerate via tools/meshy_assets.py)
 assets/models/_meshy_state.json
 
+# raw un-renamed audio exports (the renamed copies in assets/audio/ are used)
+assets/audio/unsorted/
+
 # os/editor
 .DS_Store
 *.log

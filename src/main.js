@@ -286,7 +286,7 @@ class Game {
         this.comboTimer = 2.2;
         const bonus = CFG.NEARMISS_SCORE * this.comboMult;
         this.score += bonus;
-        this.audio.nearMiss();
+        if (this.comboMult > 1) this.audio.combo(); else this.audio.nearMiss();
         this.hud.combo((this.comboMult > 1 ? `x${this.comboMult} ` : '') + 'CLOSE!', '#5dff9b');
       },
       onCoin: (e) => {
@@ -301,7 +301,7 @@ class Game {
         p.grantPowerup('invincible');
         this.fx.coinBurst(e.x, 1.2, 0);
         this.fx.sparks(p.x, 0.9, 0, 18, 0xffd23f);
-        this.audio.coin();
+        this.audio.powerup();
         this.hud.combo('★ INVINCIBLE!', '#ffd23f');
       },
       onSmash: (e, side) => {
@@ -321,7 +321,7 @@ class Game {
           this.fx.smoke(p.x, 0.3, 0, 12);
           this.fx.sparks(p.x, 0.5, 0, 10, 0xffb02e);
           this.engine.addShake(0.3);
-          this.audio.jump?.();
+          this.audio.boost();
           this.hud.combo('LAUNCH!', '#ffb02e');
         }
       },
@@ -375,7 +375,7 @@ class Game {
 
     // enemy gang cars (drive ahead, lob grenades; ram them off the road)
     this.enemies.update(dt, p, this.police.active, (ev, data) => {
-      if (ev === 'shoot') this.audio.click?.();
+      if (ev === 'shoot') this.audio.throwSfx();
       if (ev === 'enemyHitNPC') { this.fx.sparks(data.x, 0.7, data.z, 10, 0xffae42); this.audio.crash(false); }
       if (ev === 'enemyHitCop') { this.fx.sparks(data.x, 0.8, data.z, 16, 0x4ea3ff); this.fx.smoke(data.x, 0.5, data.z, 8); this.audio.crash(true); this.hud.combo('COP DOWN!', '#4ea3ff'); }
       if (ev === 'explode') {
@@ -383,7 +383,7 @@ class Game {
         this.fx.sparks(data.x, 0.6, data.z, 24, 0xff7d2a);
         this.fx.smoke(data.x, 0.5, data.z, 14);
         this.engine.addShake(data.hit ? 0.6 : 0.25);
-        this.audio.crash(true);
+        this.audio.explode();
         // only hurts you if you were on the spot (and not protected)
         if (data.hit && !p.isInvuln() && !(p.hasInvincible && p.hasInvincible())) {
           p.impact('heavy', (Math.random() < 0.5 ? -1 : 1), 0);
@@ -429,6 +429,7 @@ class Game {
     if (this.traffic.desert && p.distance > this._desertUntil) {
       this.traffic.desert = false;
       this.terrain.forceTheme?.(null); // back to normal cycling
+      this.audio.setMusicTrack?.('music');
       this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
     }
 
@@ -458,6 +459,8 @@ class Game {
           this._desertUntil = p.distance + 900;
           this.terrain.forceTheme?.('sunset'); // sandy desert palette
           this.road.triggerIntersection?.();
+          this.audio.whoosh();
+          this.audio.setMusicTrack?.('musicDesert');
           this.hud.combo('EXIT TAKEN! 🏜️ DESERT', '#ffb36b');
           this.score += 300;
         }
