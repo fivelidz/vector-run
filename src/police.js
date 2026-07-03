@@ -31,6 +31,7 @@ export class Police {
     this.bust = 0;
     this._spawnTimer = 0;
     this._hazardTimer = 12;
+    this._coinCool = 0;
   }
 
   // Called by main on each *heavy* collision. Returns:
@@ -48,6 +49,24 @@ export class Police {
     this.lastHitTime = now;
     if (this.collisions >= CFG.COLLISIONS_TO_CHASE) this.active = true;
     return 'counted';
+  }
+
+  // collecting coins bribes/loses the heat: drops the bust meter and, on a full
+  // bar of collected progress, reduces the collision streak (calls off a cop).
+  coolFromCoin() {
+    this.bust = Math.max(0, this.bust - CFG.COIN_BUST_RELIEF);
+    this._coinCool = (this._coinCool || 0) + 1;
+    if (this._coinCool >= CFG.COINS_PER_STAR_DROP) {
+      this._coinCool = 0;
+      if (this.collisions > 0) {
+        this.collisions -= 1;
+        // push the last-hit time back so the window/pressure eases too
+        this.lastHitTime -= CFG.COLLISION_WINDOW * 0.4;
+        if (this.collisions < CFG.COLLISIONS_TO_CHASE) this.active = false;
+        return true; // a star/cop was dropped
+      }
+    }
+    return false;
   }
 
   _spawnCruiser() {

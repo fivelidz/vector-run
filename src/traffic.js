@@ -256,10 +256,11 @@ export class Traffic {
 
     // desert shoulder: SPARSE rocks off to the sides (beyond the lanes). You can
     // drive onto the sand to dodge traffic, but must avoid the occasional rock.
-    if (this.desert && Math.random() < 0.35) {
-      const side = Math.random() < 0.5 ? -1 : 1;
-      const shoulderX = side * (this.road.halfRoad + 1.2 + Math.random() * 3.5);
-      this.spawnEntity('rock', 0, z, { x: shoulderX });
+    // RARELY throw a rock onto the right dirt run (lanes 3-4) so the open side
+    // isn't a totally free ride — a mild hazard to watch for.
+    if (this.desert && Math.random() < 0.09) {
+      const dirtX = this.road.laneX(3) + Math.random() * this.road.laneW * 1.4;
+      this.spawnEntity('rock', 3, z, { x: dirtX });
     }
 
     // open-lane reward: ramp, rare invincibility power-up, or coin

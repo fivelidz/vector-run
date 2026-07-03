@@ -164,7 +164,7 @@ export class Terrain {
     // ---- ease the ACTUAL state toward targets over TIME (no jumps, ever) ----
     if (!this._s || instant) this._s = tgt;
     else {
-      const al = 1 - Math.exp(-dt * 1.4); // ~0.7s time constant
+      const al = 1 - Math.exp(-dt * 0.7); // ~1.4s time constant (gentler, less jumpy)
       const s = this._s;
       s.sky.lerp(tgt.sky, al); s.fog.lerp(tgt.fog, al); s.hills.lerp(tgt.hills, al);
       s.sun.lerp(tgt.sun, al); s.hemiSky.lerp(tgt.hemiSky, al); s.hemiGround.lerp(tgt.hemiGround, al);

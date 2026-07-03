@@ -6,7 +6,7 @@ const DEFAULT = {
   coins: 0,
   car: 'classic',
   owned: ['classic'],
-  settings: { steer: 'free', sound: true, music: true, quality: 'high', twoway: true, exits: true },
+  settings: { steer: 'free', sound: true, music: true, quality: 'high', twoway: true, exits: true, curves: true },
   tune: { steerMaxVel: 11, steerAccel: 6.0, grip: 4.5, laneMagnet: 2.2 },
 };
 

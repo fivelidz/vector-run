@@ -439,16 +439,62 @@ export class Road {
       obj.position.z = z;
       return z;
     };
-    for (const d of this.dashes) { wrap(d); d.visible = !d.userData._hideDesert; }
+    for (const d of this.dashes) {
+      const z = wrap(d);
+      d.visible = !d.userData._hideDesert;
+      d.position.x = (d.userData.baseX ?? d.position.x) + this.curveX(z);
+      if (d.userData.baseX === undefined) d.userData.baseX = d.position.x - this.curveX(z);
+    }
     for (const s of this.scenery) {
       const z = wrap(s);
-      // when a prop recycles to the far horizon, reskin it to the current theme
-      if (s.userData._lastZ !== undefined && z < s.userData._lastZ - 50) {
-        this._reskinProp(s);
-      }
+      if (s.userData._lastZ !== undefined && z < s.userData._lastZ - 50) this._reskinProp(s);
       s.userData._lastZ = z;
+      s.position.x = (s.userData.baseX ?? s.position.x) + this.curveX(z);
+      if (s.userData.baseX === undefined) s.userData.baseX = s.position.x - this.curveX(z);
     }
+    this._bendGround();
     this.updateIntersection(distDelta);
+  }
+
+  // ---- winding road: lateral offset as a function of distance ahead ----
+  // curve is a signed curvature; the offset grows with distance (parabolic) so
+  // the road appears to bend away toward the horizon.
+  setCurve(c) { this.curve = c; }
+  // shift every moving entity's rendered X by the curve at its Z (keeps their
+  // logical lane x intact for collisions; only the visual position bends).
+  applyCurveToEntities(...groups) {
+    for (const g of groups) {
+      if (!g) continue;
+      for (const e of g) {
+        if (!e || !e.mesh || !e.mesh.visible) continue;
+        const off = this.curveX(e.z);
+        e.mesh.position.x = e.x + off;
+      }
+    }
+  }
+  curveX(z) {
+    if (!this.curve) return 0;
+    const ahead = -z; // metres ahead of the player (z is negative ahead)
+    if (ahead <= 0) return 0;
+    return this.curve * ahead * ahead * 0.0016;
+  }
+
+  // bend the road & grass mesh vertices sideways by curveX for each row
+  _bendGround() {
+    for (const mesh of [this.roadMesh, this.grassMesh]) {
+      if (!mesh) continue;
+      const pos = mesh.geometry.attributes.position;
+      const base = mesh.geometry.userData._baseX || (mesh.geometry.userData._baseX = pos.array.slice());
+      for (let i = 0; i <= this._segZ; i++) {
+        const wz = this._rowWorldZ(i);
+        const off = this.curveX(wz);
+        for (let cx = 0; cx < 2; cx++) {
+          const vi = i * 2 + cx;
+          pos.setX(vi, base[vi * 3] + off);
+        }
+      }
+      pos.needsUpdate = true;
+    }
   }
 }
 

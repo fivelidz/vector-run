@@ -140,6 +140,7 @@ class Game {
     this._nextExitAt = 400 + Math.random() * 250; // distance of first exit prompt
     this._desertUntil = 0;                // distance until which desert area lasts
     this._exitAnim = 0; this._desertMerging = false; this.engine.setBank(0);
+    this._curve = 0; this._curvePhase = 0; this.road.setCurve(0); this.engine.setCurveBank(0);
     this.traffic.desert = false; this.road.setDesertShoulder(false);
     // clear leftover run-state from the previous run
     this.exitSign.visible = false;
@@ -273,9 +274,22 @@ class Game {
     // exit-lane events (Temple-Run style branch into new areas)
     this._updateExits(distDelta, p);
 
+    // winding road: slow, smooth left/right curvature target (toggle in settings)
+    if (Save.settings.curves !== false && !this.traffic.desert && this._exitAnim <= 0) {
+      this._curvePhase = (this._curvePhase || 0) + distDelta * 0.0016;
+      this._curveTarget = (Math.sin(this._curvePhase) + 0.5 * Math.sin(this._curvePhase * 2.3)) * 0.9;
+    } else {
+      this._curveTarget = 0;
+    }
+    this._curve = (this._curve || 0) + (this._curveTarget - (this._curve || 0)) * Math.min(1, dt * 0.8);
+    this.road.setCurve(this._curve);
+    // bank the camera into the curve for feel
+    this.engine.setCurveBank(this._curve * 0.09);
+
     // scroll road & spawn/move traffic
     this.road.update(distDelta);
     this.traffic.update(dt, p.speed, activeSection, null);
+    this.road.applyCurveToEntities(this.traffic.active, this.police.cruisers, this.enemies.cars);
 
     // collisions
     checkCollisions(p, this.traffic, {
@@ -318,6 +332,11 @@ class Game {
         this.score += CFG.COIN_VALUE;
         this.fx.coinBurst(e.x, 1.1, 0);
         this.audio.coin();
+        // coins lower the heat: drain the bust meter, occasionally call off a cop
+        if (this.police.active) {
+          const dropped = this.police.coolFromCoin();
+          if (dropped) this.hud.combo('COOLED OFF!', '#5dff9b');
+        }
       },
       onPowerup: (e) => {
         e.mesh.visible = false;

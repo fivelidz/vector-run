@@ -74,8 +74,10 @@ export const CFG = {
   HEAT_MAX: 100,            // kept for HUD bar scale
   STAR_THRESHOLDS: [1, 2, 3, 4, 5], // HUD stars derive from collisions
   BUST_MAX: 100,
-  BUST_FILL_RATE: 45,       // bust meter fill/sec while a cop is on your bumper
+  BUST_FILL_RATE: 58,       // bust meter fill/sec while a cop is on your bumper (rises faster)
   BUST_DRAIN_RATE: 35,      // bust meter drain/sec when you've shaken them off
+  COIN_BUST_RELIEF: 18,     // bust meter reduction per coin collected
+  COINS_PER_STAR_DROP: 6,   // coins that drop one collision/star (call off a cop)
 
   // ---- Traffic spawning (row-based, guaranteed passable) ----
   ROW_GAP_MIN: 24,          // min metres between forward rows (hard, late game)
@@ -94,6 +96,7 @@ export const CFG = {
   ENEMY_MAX: 2,             // max enemy cars at once
   ENEMY_LEAD_DIST: 10,      // metres they drive AHEAD of the player to attack
   ENEMY_FATIGUE_TIME: 20,   // seconds at full pace before they tire & drift back
+  ENEMY_STUCK_TIME: 10,     // seconds stuck behind the player before surging forward again
   ENEMY_FIRE_INTERVAL: 2.6, // seconds between grenade lobs
   GRENADE_SPEED: 9,         // grenade backward speed (slow & dodgeable)
   GRENADE_FUSE: 2.5,        // seconds a landed grenade sits before auto-detonating

@@ -39,7 +39,7 @@ export class Enemies {
     c.fireTimer = 2.0 + Math.random() * 1.5;
     c.knocked = false; c.alive = true; c.age = 0;
     c.slot = this.cars.filter((x) => x !== c && x.mesh.visible && x.alive).length; // unique lead slot
-    c.ky = 0; c.kvx = 0; c.kvy = 0; c.kspin = 0; c.airborne = false; c.cy = 0; c.vy = 0;
+    c.ky = 0; c.kvx = 0; c.kvy = 0; c.kspin = 0; c.airborne = false; c.cy = 0; c.vy = 0; c._behind = 0;
     c.mesh.scale.set(1, 1, 1);
     c.mesh.rotation.set(0, 0, 0);      // reset any tumble from a previous life
     c.mesh.position.set(c.x, 0, c.z);
@@ -91,6 +91,12 @@ export class Enemies {
       }
       c.age = (c.age || 0) + dt;
       const rank = c.rank ?? 0; // 0 = OLDEST (tracks the player closest)
+
+      // if an enemy gets STUCK behind the player (couldn't be rammed) for a while,
+      // it gives up chasing from behind and surges forward again to re-attack.
+      if (c.z > CFG.CAR_HALF_L + 1) { c._behind = (c._behind || 0) + dt; }
+      else c._behind = 0;
+      if (c._behind > CFG.ENEMY_STUCK_TIME) { c.age = 0; c._behind = 0; } // reset -> lead again
 
       // fatigue: they get ahead for a while, then drift back so you can ram them
       const driftBack = Math.max(0, (c.age - CFG.ENEMY_FATIGUE_TIME) * 2.0);

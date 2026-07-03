@@ -60,6 +60,8 @@ export class Menus {
     if (tw) { tw.checked = s.twoway !== false; tw.addEventListener('change', () => Save.setSetting('twoway', tw.checked)); }
     const ex = document.getElementById('opt-exits');
     if (ex) { ex.checked = s.exits !== false; ex.addEventListener('change', () => Save.setSetting('exits', ex.checked)); }
+    const cv = document.getElementById('opt-curves');
+    if (cv) { cv.checked = s.curves !== false; cv.addEventListener('change', () => Save.setSetting('curves', cv.checked)); }
 
     // steering tuning sliders (live)
     const tune = Save.tune;

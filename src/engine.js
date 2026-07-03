@@ -96,19 +96,24 @@ export class Engine {
       this.camera.position.y += (CFG.CAM_HEIGHT - this.camera.position.y) * Math.min(1, dt * 8);
     }
 
+    // winding-road curve: look toward where the road bends ahead + slight roll
+    const cb = this.curveBank || 0;
+    // curveX at the look-ahead distance approximated by cb magnitude
+    const lookX = desiredX * 0.4 + cb * 90;
+
     // exit-ramp bank: sweep the camera sideways + roll during an exit animation
     if (this.bank && Math.abs(this.bank) > 0.001) {
       this.camera.position.x += this.bank * 5;
+      this.camera.lookAt(desiredX * 0.4 + this.bank * 8, 1.4, -CFG.CAM_LOOK_AHEAD);
       this.camera.rotation.z = -this.bank * 0.35;
-    } else {
-      this.camera.lookAt(desiredX * 0.4, 1.4, -CFG.CAM_LOOK_AHEAD);
       return;
     }
-    this.camera.lookAt(desiredX * 0.4 + this.bank * 8, 1.4, -CFG.CAM_LOOK_AHEAD);
-    this.camera.rotation.z = -this.bank * 0.35;
+    this.camera.lookAt(lookX, 1.4, -CFG.CAM_LOOK_AHEAD);
+    this.camera.rotation.z = -cb * 3;
   }
 
   setBank(b) { this.bank = b; }
+  setCurveBank(c) { this.curveBank = c; }
 
   render() { this.renderer.render(this.scene, this.camera); }
 }
