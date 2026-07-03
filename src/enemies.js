@@ -71,6 +71,11 @@ export class Enemies {
       this._spawnTimer = CFG.ENEMY_INTERVAL * (0.6 + Math.random() * 0.8);
     }
 
+    // rank live enemies by age (oldest first) so ranks are stable & distinct
+    const live = this.cars.filter((c) => c.mesh.visible && c.alive && !c.knocked)
+      .sort((a, b) => (b.age || 0) - (a.age || 0));
+    live.forEach((c, i) => { c.rank = i; });
+
     // ---- enemy cars ----
     for (const c of this.cars) {
       if (!c.mesh.visible) continue;
@@ -84,33 +89,30 @@ export class Enemies {
         if (c.z > CFG.VISIBLE_BEHIND + 10) c.mesh.visible = false;
         continue;
       }
-      // Drive ahead, but DRIFT BACK toward the player over time so they can be
-      // caught & rammed. Stagger enemies by slot so they never share a spot.
-      const slot = c.slot ?? 0;
       c.age = (c.age || 0) + dt;
-      // full speed to get ahead for the first 20s, THEN their pace decays and
-      // they drift back toward the player so you can catch & ram them.
+      const rank = c.rank ?? 0; // 0 = OLDEST (tracks the player closest)
+
+      // fatigue: they get ahead for a while, then drift back so you can ram them
       const driftBack = Math.max(0, (c.age - CFG.ENEMY_FATIGUE_TIME) * 2.0);
-      const desiredZ = -CFG.ENEMY_LEAD_DIST - slot * 6 + Math.min(CFG.ENEMY_LEAD_DIST + 8, driftBack);
+      // the oldest (rank 0) leads closest; later ranks sit progressively further
+      const desiredZ = -CFG.ENEMY_LEAD_DIST - rank * 8 + Math.min(CFG.ENEMY_LEAD_DIST + 8, driftBack);
       c.z += (desiredZ - c.z) * Math.min(1, dt * 0.7);
-      // pick an ADJACENT lane (not the player's) to overtake in — an enemy that
-      // is still BEHIND/ALONGSIDE the player stays out of their lane; once safely
-      // ahead it can move into line to attack.
-      const safelyAhead = c.z < -CFG.CAR_HALF_L * 2 - 2;
-      let laneOff = slot % 2 ? CFG.LANE_WIDTH : -CFG.LANE_WIDTH; // default a side
-      if (slot === 0 && safelyAhead) laneOff = 0;               // lead car lines up when ahead
-      // keep them on the tarmac
-      let want = player.x + laneOff;
+
+      // DISTINCT LANES: oldest takes the player's lane; others take separate
+      // adjacent lanes so they never bunch up on top of each other.
+      const laneOffs = [0, CFG.LANE_WIDTH, -CFG.LANE_WIDTH, CFG.LANE_WIDTH * 2];
+      let want = player.x + (laneOffs[rank] ?? CFG.LANE_WIDTH * (rank - 1));
       const maxX = this.road.halfRoad - CFG.LANE_WIDTH * 0.5;
       want = Math.max(-maxX, Math.min(maxX, want));
-      c.targetX += (want - c.targetX) * Math.min(1, dt * 0.5);
-      c.x += (c.targetX - c.x) * Math.min(1, dt * 1.8);
-      // separation from other enemies (no overlap)
+      c.targetX += (want - c.targetX) * Math.min(1, dt * 0.6);
+      c.x += (c.targetX - c.x) * Math.min(1, dt * 2.0);
+
+      // hard separation — push apart along X (into different lanes) if overlapping
       for (const o of this.cars) {
         if (o === c || !o.mesh.visible || o.knocked) continue;
-        if (Math.abs(c.z - o.z) < CFG.CAR_HALF_L * 2 && Math.abs(c.x - o.x) < CFG.CAR_HALF_W * 2) {
-          c.x += Math.sign((c.x - o.x) || 1) * 0.08;
-          c.z += Math.sign((c.z - o.z) || -1) * 0.1;
+        if (Math.abs(c.z - o.z) < CFG.CAR_HALF_L * 2.2 && Math.abs(c.x - o.x) < CFG.LANE_WIDTH * 0.9) {
+          const push = Math.sign((c.x - o.x) || (c.age - o.age) || 1);
+          c.x += push * 0.15; c.targetX += push * 0.15; // shove sideways to split lanes
         }
       }
       // ---- enemy launches off ramps too ----

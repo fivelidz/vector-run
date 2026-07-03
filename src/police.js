@@ -107,6 +107,7 @@ export class Police {
     const pressure = Math.max(0, 1 - sinceHit2 / CFG.COLLISION_WINDOW); // 1 just after hit -> 0
     const desiredTail = minGap + (CFG.POLICE_TAIL_DIST - minGap) * (1 - pressure);
     let anyContact = false;
+    let veer = 0;
     for (const c of this.cruisers) {
       if (!c.mesh.visible) continue;
 
@@ -158,6 +159,15 @@ export class Police {
       // contact = cop on your bumper in your lane while at high pressure
       if (c.z < minGap + 1.0 && Math.abs(c.x - player.x) < CFG.CAR_HALF_W + 0.8 && pressure > 0.5) anyContact = true;
 
+      // VEER: a cop tailing directly behind in your lane shoves the car sideways
+      // (destabilising bump — you have to fight to hold your line).
+      const dxp = c.x - player.x;
+      if (c.z < minGap + 4 && Math.abs(dxp) < CFG.CAR_HALF_W + 0.5) {
+        // push away from whichever side the cruiser is nudging from
+        const dir = (dxp === 0) ? (Math.sin(this.time * 6) > 0 ? 1 : -1) : Math.sign(dxp);
+        veer += -dir * CFG.POLICE_VEER * (1 - c.z / (minGap + 4));
+      }
+
       const lb = c.mesh.userData.lightbar;
       if (lb) {
         const on = Math.sin(this.time * 12) > 0;
@@ -165,6 +175,8 @@ export class Police {
         lb.blue.material.emissiveIntensity = on ? 0.1 : 1.8;
       }
     }
+
+    this.veerForce = veer; // read by the player to shove its steering
 
     // ---- BUST METER: fills only while a cop is in contact (i.e. you're slow
     // enough to be caught). Outrun them and it drains — high speed = never busted.

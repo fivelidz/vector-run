@@ -67,9 +67,10 @@ export const CFG = {
   COLLISIONS_TO_CHASE: 2,   // crashes before police start chasing
   COLLISION_WINDOW: 45,     // seconds: streak resets / cops lose you after this
   COLLISION_COOLDOWN: 0.7,  // debounce so one crash counts once (not per-frame)
-  POLICE_TAIL_DIST: 9,      // metres behind player (in view, ahead of camera)
+  POLICE_TAIL_DIST: 15,     // metres behind player (further back; drifts forward)
   POLICE_CLOSE_RATE: 0.8,   // how fast they ease to the tail position
   POLICE_MAX_SPEED: 62,     // cop top speed — outrun them by going faster than this
+  POLICE_VEER: 5.5,         // lateral shove (m/s^2) on the player when a cop tails their lane
   HEAT_MAX: 100,            // kept for HUD bar scale
   STAR_THRESHOLDS: [1, 2, 3, 4, 5], // HUD stars derive from collisions
   BUST_MAX: 100,

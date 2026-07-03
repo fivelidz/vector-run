@@ -95,6 +95,9 @@ export class Player {
     this.targetLane = next;
   }
 
+  // external lateral shove (police tailgate). Accumulated & applied in update().
+  applyLateral(dx) { this._extraLateral = (this._extraLateral || 0) + dx; this._veering = true; }
+
   // nearest lane index for a given x. Oncoming lanes are settle-able UNLESS a
   // physical median barrier blocks them.
   _nearestLane(road) {
@@ -226,11 +229,13 @@ export class Player {
     let maxX = road.laneX(nLanes - 1) + CFG.LANE_WIDTH * 0.45;
     minX = Math.max(minX, -road.drivableHalf);
     maxX = Math.min(maxX, road.drivableHalf);
-    // desert: you may drive onto the sandy shoulder either side (watch for rocks)
+    // desert (narrow road): drive lanes 0-2 (tarmac) + a little onto the right
+    // dirt where lanes 3-4 used to be — a modest run, NOT a huge out-of-bounds.
     if (road.desertShoulder) {
-      const sh = road.halfRoad + CFG.LANE_WIDTH * 1.3;
-      if (!road.medianActive) minX = -sh;
-      maxX = sh;
+      const leftEdge = road.laneX(0) - CFG.LANE_WIDTH * 0.55;         // just past oncoming
+      const rightEdge = road.laneX(4) + CFG.LANE_WIDTH * 0.2;         // covers the old lanes 3-4
+      minX = leftEdge;
+      maxX = rightEdge;
     }
     this.minLaneX = minX; this.maxLaneX = maxX;
 
@@ -250,12 +255,16 @@ export class Player {
       this.vx += (desiredVx - this.vx) * Math.min(1, k * dt);
 
       this.x += this.vx * dt;
+      // external shove (e.g. a tailing police car) — a lateral disturbance
+      if (this._extraLateral) { this.x += this._extraLateral; this.vx += this._extraLateral * 8; this._extraLateral = 0; }
 
       // release: ease POSITION toward nearest lane centre (subtle aim-assist)
-      if (!steering && Math.abs(this.vx) < 3) {
+      // — suppressed while a cop is shoving you so the veer actually bites
+      if (!steering && Math.abs(this.vx) < 3 && !this._veering) {
         const cx = road.laneX(this._nearestLane(road));
         this.x += (cx - this.x) * Math.min(1, T.laneMagnet * dt);
       }
+      this._veering = false;
 
       // hard walls (no bounce — bouncing felt like wrong-direction drift)
       if (this.x < minX) { this.x = minX; if (this.vx < 0) this.vx = 0; }

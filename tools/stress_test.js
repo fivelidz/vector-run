@@ -32,11 +32,13 @@ const URL = process.env.URL || 'http://localhost:8099/index.html';
     g.player.speed = 5; // slow -> cop catches & rides bumper
     let maxBust = 0, busted = false;
     g.police.bust = 0;
-    for (let i = 0; i < 240; i++) {
-      // pin the cruiser onto the player to simulate being caught
-      c.z = 1.0; c.x = g.player.x; c.mesh.visible = true;
+    for (let i = 0; i < 400; i++) {
+      // pin the cruiser onto the player (in-lane) & keep pressure high
+      c.z = 1.0; c.x = g.player.x; c.mesh.visible = true; c.crashed = false;
+      g.police.lastHitTime = g.police.time; // sustain high pressure
       g.police.update(1 / 60, g.player, 1, (ev) => { if (ev === 'busted') busted = true; }, g.director.current);
       maxBust = Math.max(maxBust, g.police.bust);
+      if (busted) break;
     }
     return { maxBust: Math.round(maxBust), busted };
   });

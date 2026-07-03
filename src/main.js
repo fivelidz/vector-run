@@ -392,6 +392,8 @@ class Game {
       if (ev === 'cruiserSpawn') this.audio.sirenBurst();
       if (ev === 'copCrash') { this.audio.stopSiren(); this.fx.sparks(d?.x ?? p.x, 0.8, d?.z ?? 8, 18, 0x4ea3ff); this.fx.smoke(d?.x ?? p.x, 0.5, d?.z ?? 8, 10); this.audio.crash(true); this.score += 250; this.hud.combo('COP WRECKED! +250', '#4ea3ff'); }
     }, activeSection);
+    // a tailing cop shoves the player's steering (must fight to hold your lane)
+    if (this.police.veerForce) p.applyLateral(this.police.veerForce * dt);
 
     // distance milestones (every 1km) — score bonus + callout
     const km = Math.floor(p.distance / 1000);
