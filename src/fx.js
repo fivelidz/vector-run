@@ -25,37 +25,51 @@ export class FX {
     this._data = []; // {x,y,z,vx,vy,vz,life,maxlife,r,g,b,grav}
     for (let i = 0; i < this.max; i++) this._data.push({ life: 0 });
 
-    // ---- tyre tracks: a pool of small dark quads laid DENSELY so they read as
-    // a smooth continuous line that follows the turn. Each quad is short; we drop
-    // them close together (main.js drops ~every 0.6m) and they scroll back+fade.
+    // ---- tyre tracks: each quad is a SEGMENT that bridges the previous wheel
+    // position to the current one — stretched & rotated to connect them, so the
+    // trail is a genuinely continuous line that follows any curve. A unit quad
+    // (1×1 in local XZ) is scaled to the segment length and yaw-rotated.
     this._tracks = [];
     this._trackMax = 260;
-    const trackGeo = new THREE.PlaneGeometry(0.3, 0.9);
+    const trackGeo = new THREE.PlaneGeometry(1, 1); // unit, scaled per segment
     const trackMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0c, transparent: true, opacity: 0.5, depthWrite: false });
     for (let i = 0; i < this._trackMax; i++) {
       const m = new THREE.Mesh(trackGeo, trackMat.clone());
-      m.rotation.x = -Math.PI / 2; m.position.y = 0.06; m.renderOrder = 3; m.visible = false;
+      m.rotation.order = 'YXZ';  // apply yaw (world) first, then flatten
+      m.position.y = 0.06; m.renderOrder = 3; m.visible = false;
       scene.add(m);
-      this._tracks.push({ mesh: m, z: 0, life: 0, max: 1 });
+      this._tracks.push({ mesh: m, z: 0, life: 0, _op: 0.5 });
     }
     this._trackIdx = 0;
+    this._lastWheel = null; // [{x,z} left, {x,z} right] previous drop positions
   }
 
-  // stamp a track quad at each wheel (strength = darkness). Called densely.
+  // Drop connecting track SEGMENTS between the last wheel positions and now.
   dropTrack(x, strength = 0.4) {
-    const op = Math.min(0.65, 0.3 + strength * 0.5);
-    for (const off of [-0.42, 0.42]) {
-      const t = this._tracks[this._trackIdx];
-      this._trackIdx = (this._trackIdx + 1) % this._trackMax;
-      t.z = 1.6; t.life = t.max = 5.0;
-      t.mesh.position.set(x + off, 0.06, 1.6);
-      t.mesh.material.opacity = op; t._op = op;
-      t.mesh.visible = true;
+    const op = Math.min(0.6, 0.3 + strength * 0.45);
+    const nowW = [{ x: x - 0.42, z: 1.6 }, { x: x + 0.42, z: 1.6 }];
+    if (this._lastWheel) {
+      for (let w = 0; w < 2; w++) {
+        const a = this._lastWheel[w], c = nowW[w];
+        const dx = c.x - a.x, dz = c.z - a.z;
+        const len = Math.hypot(dx, dz);
+        if (len < 0.01) continue;
+        const t = this._tracks[this._trackIdx];
+        this._trackIdx = (this._trackIdx + 1) % this._trackMax;
+        t.z = (a.z + c.z) / 2; t.life = 5.0; t._op = op;
+        t.mesh.position.set((a.x + c.x) / 2, 0.06, t.z);
+        // YXZ order: yaw about world-Y to point along the segment, then flat
+        t.mesh.rotation.set(-Math.PI / 2, Math.atan2(dx, dz), 0);
+        t.mesh.scale.set(0.32, len + 0.14, 1);  // width, length(=segment)+overlap
+        t.mesh.material.opacity = op;
+        t.mesh.visible = true;
+      }
     }
+    this._lastWheel = nowW;
   }
-  penUp() {}
+  penUp() { this._lastWheel = null; } // break the line between separate skids
 
-  clearTracks() { for (const t of this._tracks) { t.life = 0; t.mesh.visible = false; } }
+  clearTracks() { for (const t of this._tracks) { t.life = 0; t.mesh.visible = false; } this._lastWheel = null; }
 
   updateTracks(distDelta) {
     for (const t of this._tracks) {
@@ -63,9 +77,12 @@ export class FX {
       t.z += distDelta;
       t.life -= 0.02;
       t.mesh.position.z = t.z;
-      t.mesh.material.opacity = Math.max(0, (t._op || 0.5) * Math.min(1, t.life / 1.5));
+      t.mesh.material.opacity = Math.max(0, t._op * Math.min(1, t.life / 1.5));
       if (t.life <= 0 || t.z > 55) { t.mesh.visible = false; t.life = 0; }
     }
+    // the stored last-wheel points must also scroll with the world so the next
+    // connecting segment starts from the right place
+    if (this._lastWheel) for (const p of this._lastWheel) p.z += distDelta;
   }
 
   _emit(x, y, z, vx, vy, vz, life, color, grav = -9) {
