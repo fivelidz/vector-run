@@ -72,7 +72,7 @@ class Game {
   _buildPlayer() {
     const car = CARS.find((c) => c.id === Save.car) || CARS[0];
     if (this.player) this.engine.scene.remove(this.player.mesh);
-    this.player = new Player(this.engine.scene, car.color);
+    this.player = new Player(this.engine.scene, car.color, car);
     this.player.setLaneCount(CFG.NUM_LANES);
   }
 
@@ -237,8 +237,9 @@ class Game {
         this._appliedOncoming = this._pendingLayout.oncomingLanes;
         this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
         this._pendingLayout = null;
-        this.traffic.haltSpawns = false;         // resume spawning in the new layout
         this.traffic.turnZ = null;
+        // burst-fill the road ahead immediately (no slow trickle / empty-road pop-in)
+        this.traffic.fillAheadNow({ ...section, oncomingLanes: this._appliedOncoming });
       }
     }
     p.setLaneCount(section.lanes);
@@ -528,6 +529,8 @@ class Game {
         this.terrain.forceTheme?.(null);           // resume theme cycling (eases over time)
         this.audio.setMusicTrack?.('music');
         this.traffic.clearAll();
+        // burst-fill the highway ahead immediately (no empty-road pop-in)
+        this.traffic.fillAheadNow({ ...this.director.current, oncomingLanes: 0 });
         this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
         // set a fresh exit cooldown so it doesn't immediately offer another exit
         this._nextExitAt = p.distance + 700 + Math.random() * 500;
@@ -570,6 +573,8 @@ class Game {
           this.score += 300;
           this._exitAnim = 1.2;            // seconds of off-ramp banking
           this.traffic.clearAll();          // clear the highway; desert starts fresh
+          // burst-fill the desert road immediately (no empty-road pop-in)
+          this.traffic.fillAheadNow({ ...this.director.current, lanes: 3, oncomingLanes: 1, allowObstacles: false });
         }
       }
       // despawn the sign after it passes

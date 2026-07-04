@@ -113,10 +113,23 @@ export class Menus {
       const sw = document.createElement('div');
       sw.className = 'car-swatch';
       sw.style.background = '#' + car.color.toString(16).padStart(6, '0');
+      // racing-stripe accent bar so the swatch previews the car's decal too
+      if (car.stripe != null) {
+        const stripeBar = document.createElement('div');
+        stripeBar.className = 'car-stripe';
+        stripeBar.style.background = '#' + car.stripe.toString(16).padStart(6, '0');
+        sw.appendChild(stripeBar);
+      }
       cell.appendChild(sw);
       const label = document.createElement('div');
       label.textContent = owned ? car.name : `🔒 ${car.cost}🪙`;
       cell.appendChild(label);
+      // top-speed stat, shown for every car so the difference is actually stated
+      const speedPct = Math.round((car.speedMult ?? 1) * 100);
+      const speedRow = document.createElement('div');
+      speedRow.className = 'car-speed';
+      speedRow.textContent = `⚡ Top speed ${speedPct}%`;
+      cell.appendChild(speedRow);
       cell.addEventListener('click', () => {
         this.audio?.click();
         if (owned) { Save.setCar(car.id); }

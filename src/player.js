@@ -7,10 +7,11 @@ import { makeCar, buildModel } from './assets.js';
 export const PStates = { DRIVE: 'drive', SPIN: 'spin', WRECKED: 'wrecked' };
 
 export class Player {
-  constructor(scene, color) {
+  constructor(scene, color, carStats = {}) {
     this.scene = scene;
+    this.speedMult = carStats.speedMult ?? 1.0; // per-car top-speed multiplier
     // procedural OPEN-TOP hero car — renders reliably & coloured from chase cam
-    this.mesh = makeCar(color, 'convertible');
+    this.mesh = makeCar(color, 'convertible', { stripe: carStats.stripe });
     this.mesh.position.set(0, 0, 0);
     scene.add(this.mesh);
 
@@ -192,8 +193,11 @@ export class Player {
 
   update(dt, input, road, opts) {
     // ---- forward speed target from distance ramp ----
+    // per-car speedMult raises the TOP-SPEED ceiling (unlocked cars are faster
+    // late-run) while keeping the early pace the same for everyone.
     const ramp = Math.min(1, this.distance / CFG.RAMP_DISTANCE);
-    let base = CFG.BASE_SPEED + (CFG.MAX_SPEED - CFG.BASE_SPEED) * ramp;
+    const carMax = CFG.MAX_SPEED * (this.speedMult || 1);
+    let base = CFG.BASE_SPEED + (carMax - CFG.BASE_SPEED) * ramp;
 
     this._tickPowerups(dt);
 

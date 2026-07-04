@@ -144,11 +144,13 @@ export const PAL = {
 };
 
 // Car roster (cosmetic). id, name, color, cost.
+// speedMult scales MAX_SPEED (top speed) — faster unlocks reward progression.
+// stripe is a fixed racing-stripe accent colour (independent of body colour).
 export const CARS = [
-  { id: 'classic', name: 'Drifter',   color: 0xffd23f, cost: 0 },
-  { id: 'blue',    name: 'Bolt',      color: 0x4ea3ff, cost: 200 },
-  { id: 'red',     name: 'Inferno',   color: 0xff4d4d, cost: 350 },
-  { id: 'green',   name: 'Viper',     color: 0x5dff9b, cost: 500 },
-  { id: 'purple',  name: 'Phantom',   color: 0x9d6dff, cost: 800 },
-  { id: 'mono',    name: 'Stealth',   color: 0x2b3040, cost: 1200 },
+  { id: 'classic', name: 'Drifter',   color: 0xffd23f, cost: 0,    speedMult: 1.00, stripe: 0x0e0f14 },
+  { id: 'blue',    name: 'Bolt',      color: 0x4ea3ff, cost: 200,  speedMult: 1.04, stripe: 0xffffff },
+  { id: 'red',     name: 'Inferno',   color: 0xff4d4d, cost: 350,  speedMult: 1.08, stripe: 0x1a1a1a },
+  { id: 'green',   name: 'Viper',     color: 0x5dff9b, cost: 500,  speedMult: 1.11, stripe: 0xffd23f },
+  { id: 'purple',  name: 'Phantom',   color: 0x9d6dff, cost: 800,  speedMult: 1.15, stripe: 0x2be0ff },
+  { id: 'mono',    name: 'Stealth',   color: 0x2b3040, cost: 1200, speedMult: 1.20, stripe: 0xff2b4d },
 ];

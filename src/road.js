@@ -450,7 +450,9 @@ export class Road {
       d.position.x = (d.userData.baseX ?? d.position.x) + this.curveX(z);
       if (d.userData.baseX === undefined) d.userData.baseX = d.position.x - this.curveX(z);
       // subtle yaw so each dash reads as following the bend, not just sliding
-      d.rotation.y = this.curveSlope(z) * 3.2;
+      // proper tangent angle (not an arbitrary multiplier): the local slope
+      // dX/dz IS the tangent of the yaw needed to align the dash with the bend
+      d.rotation.y = Math.atan(this.curveSlope(z));
     }
     for (const s of this.scenery) {
       const z = wrap(s);

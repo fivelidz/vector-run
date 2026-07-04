@@ -46,8 +46,9 @@ function box(w, h, d, mat) {
 // ---- Procedural car: chunky cartoon car with visible wheels + glass + lights.
 // FORWARD = -Z (away from the chase camera). Headlights at the -Z end.
 // Smooth-shaded, rounded, sporty silhouette (not flat-shaded blocks).
-export function makeCar(color = PAL.player, kind = 'car') {
+export function makeCar(color = PAL.player, kind = 'car', opts = {}) {
   const grp = new THREE.Group();
+  const stripeColor = opts.stripe ?? 0x0e0f14;
   const long = kind === 'truck';
   const W = 1.5, L = long ? 5.0 : 3.4, H = 0.85;
   const FWD = -1;
@@ -78,9 +79,11 @@ export function makeCar(color = PAL.player, kind = 'car') {
     interior.position.set(0, 0.92, -0.05); grp.add(interior);   // recessed
     // black seat backs (raised, distinct)
     for (const sx of [-1, 1]) { const seat = roundedBox(0.28, 0.36, 0.28, 0.1, blackMat); seat.position.set(sx * 0.3, 1.22, 0.35); grp.add(seat); }
-    // BLACK bonnet stripe as a single raised plate on top of the hood (one mesh,
-    // lifted above the body so it can't z-fight)
-    const stripe = box(0.5, 0.04, L * 0.85, blackMat);
+    // racing STRIPE as a single raised plate on top of the hood (one mesh,
+    // lifted above the body so it can't z-fight) — colour varies per unlocked car
+    const bright = new THREE.Color(stripeColor).getHSL({ h: 0, s: 0, l: 0 }).l > 0.55;
+    const stripeMat = smooth(stripeColor, { rough: 0.35, metal: 0.3, emissive: bright ? stripeColor : 0x000000, emissiveIntensity: bright ? 0.35 : 0 });
+    const stripe = box(0.5, 0.04, L * 0.85, stripeMat);
     stripe.position.set(0, 1.13, 0); grp.add(stripe);
     // small raked windshield at the front of the cockpit
     const glassMat = smooth(0x9fd8ff, { rough: 0.05, metal: 0.6, emissive: 0x223344, emissiveIntensity: 0.15 });

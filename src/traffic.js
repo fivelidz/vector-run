@@ -144,6 +144,40 @@ export class Traffic {
   // Called when the road layout (oncoming/median) changes. Despawn far-ahead
   // traffic (it would be in now-wrong-direction lanes) and pause spawns briefly
   // so the new layout starts clean — no cars driving the wrong way.
+  // Instantly populate the ENTIRE visible-ahead stretch with rows, instead of
+  // waiting for the slow per-frame trickle to catch up. Without this, unhalting
+  // spawns (or clearAll) left the road ahead looking empty/"not loaded" for
+  // several seconds after every transition/merge while rows filled in one by one.
+  fillAheadNow(section) {
+    this.haltSpawns = false;
+    const farZ = -CFG.VISIBLE_AHEAD;
+    // the row-sweep runs NEAR -> FAR (z decreasing each iteration), so it must
+    // START near the player to sweep the whole visible stretch in one go —
+    // starting at the far edge only produced a single row (the opposite bug).
+    this._nextRowZ = -20;
+    const onc = section.oncomingLanes || 0;
+    let guard = 0;
+    while (this._nextRowZ > farZ && guard++ < 40) {
+      this._spawnRow(section, this._nextRowZ, onc);
+      const d = this.difficulty;
+      const sp = this.speed01 ?? 0;
+      let gap = (CFG.ROW_GAP_MAX - (CFG.ROW_GAP_MAX - CFG.ROW_GAP_MIN) * d) * (0.85 + Math.random() * 0.4);
+      gap *= 1 + sp * 0.9;
+      this._nextRowZ -= gap;
+    }
+    // also pre-stream the oncoming lanes so they aren't empty either
+    for (let lane = 0; lane < onc; lane++) {
+      this.laneNextSpawn[lane] = -20; // same near->far sweep fix as above
+      let g2 = 0;
+      while (this.laneNextSpawn[lane] > farZ && g2++ < 20) {
+        const z = this.laneNextSpawn[lane];
+        const sp2 = CFG.ONCOMING_SPEED[0] + Math.random() * (CFG.ONCOMING_SPEED[1] - CFG.ONCOMING_SPEED[0]);
+        if (Math.random() < 0.75) this.spawnEntity('car', lane, z, { oncoming: true, speed: sp2 });
+        this.laneNextSpawn[lane] = z - (22 + Math.random() * 26);
+      }
+    }
+  }
+
   // remove ALL active traffic/obstacles (used when applying a new road layout)
   clearAll() {
     for (let i = this.active.length - 1; i >= 0; i--) {
