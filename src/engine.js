@@ -9,6 +9,8 @@ export class Engine {
     this.renderer.setClearColor(PAL.sky, 1);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // needed for road.js's centre-line transition-preview clip planes
+    this.renderer.localClippingEnabled = true;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(PAL.sky);

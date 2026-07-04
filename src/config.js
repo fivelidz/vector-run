@@ -99,6 +99,7 @@ export const CFG = {
   ENEMY_FATIGUE_TIME: 20,   // seconds at full pace before they tire & drift back
   ENEMY_STUCK_TIME: 10,     // seconds stuck behind the player before surging forward again
   ENEMY_FIRE_INTERVAL: 2.6, // seconds between grenade lobs
+  ENEMY_TELEGRAPH_TIME: 1.0, // seconds of "winding up" warning before a grenade is actually thrown
   GRENADE_SPEED: 9,         // grenade backward speed (slow & dodgeable)
   GRENADE_FUSE: 2.5,        // seconds a landed grenade sits before auto-detonating
   ENEMY_NPC_THIN: 0.45,     // multiply NPC fill chance while enemies are present

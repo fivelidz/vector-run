@@ -19,4 +19,5 @@ echo "=== JUMP   ==="; node jump_test.js      | grep -vE "$FILT" || true
 echo "=== MECHANICS ==="; node mechanics_test.js | grep -vE "$FILT" || true
 echo "=== TERRAIN==="; node terrain_test.js | grep -vE "$FILT" || true
 echo "=== STRESS ==="; node stress_test.js  | grep -vE "$FILT" || true
+echo "=== TRANSITION ==="; node transition_test.js | grep -vE "$FILT" || true
 echo "=== DONE ==="

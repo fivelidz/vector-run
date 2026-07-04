@@ -198,6 +198,29 @@ export class Road {
     this.centerLine.visible = false;
     this.group.add(this.centerLine);
 
+    // ---- PREVIEW centre line: shows the UPCOMING layout's divider strictly
+    // BEYOND an approaching intersection while the CURRENT line (above) keeps
+    // showing the old layout on the near side. Both are the same full-length
+    // mesh, split cleanly with a local clipping plane (no geometry resizing,
+    // so the curve-bend maths — which assumes a fixed shared length — stays
+    // correct on both). This fixes lane markings reading "wrong" past a
+    // junction until the player had actually driven through it.
+    this._clipNear = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);  // keeps z >= boundary (near/current side)
+    this._clipFar = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);  // keeps z <= boundary (far/preview side)
+    this.centerLinePreview = new THREE.Group();
+    for (const off of [-0.12, 0.12]) {
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.16, medLen, 1, this._segZ),
+        flat(PAL.roadLine, { emissive: 0x332a00, emissiveIntensity: 0.25 }));
+      strip.material.clippingPlanes = [this._clipFar];
+      strip.rotation.x = -Math.PI / 2;
+      strip.position.set(off, 0.031, 0); // hair above the current line to avoid z-fighting right at the seam
+      this.centerLinePreview.add(strip);
+    }
+    this.centerLinePreview.position.z = grass.position.z;
+    this.centerLinePreview.visible = false;
+    this.group.add(this.centerLinePreview);
+    this._previewActive = false;
+
     // concrete barrier wall (segmented look via stripes)
     this.median = new THREE.Group();
     const medWall = box(0.7, 0.9, medLen, flat(PAL.median, { rough: 0.85 }));
@@ -416,6 +439,10 @@ export class Road {
 
   setOncomingLanes(n) {
     this.oncomingLanes = n;
+    // this is the moment the layout is FULLY applied (player has crossed the
+    // junction) — drop any in-progress preview split and go back to one clean
+    // full-length line.
+    this._endOncomingPreview();
     const dx = this._dividerX();
     // painted double-yellow centre line on two-way roads (full length, static)
     if (dx !== null) {
@@ -424,6 +451,36 @@ export class Road {
     } else {
       this.centerLine.visible = false;
     }
+  }
+
+  // ---- transition preview: call every frame while a layout change is
+  // pending, with the NEW oncoming-lane count and the approaching
+  // intersection's current world Z. Splits the centre line so the near side
+  // (between the player and the junction) keeps showing the CURRENT layout,
+  // while the far side (beyond the junction) already shows the UPCOMING one —
+  // matching what the traffic pre-loader now does for the cars themselves.
+  previewOncomingBeyond(newN, boundaryZ) {
+    this._previewActive = true;
+    // clip the CURRENT line down to the near side only
+    this._clipNear.constant = -boundaryZ; // keep where z >= boundaryZ
+    for (const s of this.centerLine.children) s.material.clippingPlanes = [this._clipNear];
+
+    // show the UPCOMING line, clipped to the far side only
+    const dx = newN > 0 ? (-this.halfRoad + this.laneW * newN) : null;
+    if (dx !== null) {
+      this._clipFar.constant = boundaryZ; // keep where z <= boundaryZ
+      this.centerLinePreview.position.set(dx, this.centerLinePreview.position.y, this._groundZ);
+      this.centerLinePreview.visible = true;
+    } else {
+      this.centerLinePreview.visible = false;
+    }
+  }
+  _endOncomingPreview() {
+    if (!this._previewActive) return;
+    for (const s of this.centerLine.children) s.material.clippingPlanes = [];
+    for (const s of this.centerLinePreview.children) s.material.clippingPlanes = [];
+    this.centerLinePreview.visible = false;
+    this._previewActive = false;
   }
 
   // no-op stubs (the preview approach caused "imaginary dividers"; the
@@ -523,6 +580,7 @@ export class Road {
     this._bendMesh(this.grassMesh);
     for (const m of this._bendable || []) this._bendMesh(m);
     for (const m of this.centerLine?.children || []) this._bendMesh(m);
+    for (const m of this.centerLinePreview?.children || []) this._bendMesh(m);
   }
 }
 

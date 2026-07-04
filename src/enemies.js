@@ -21,7 +21,11 @@ export class Enemies {
   reset() {
     // hide but KEEP the pooled meshes (clearing the arrays leaked meshes into
     // the scene on every retry — _spawnEnemy reuses hidden entries)
-    for (const c of this.cars) { c.mesh.visible = false; c.alive = false; c.knocked = false; }
+    for (const c of this.cars) {
+      c.mesh.visible = false; c.alive = false; c.knocked = false;
+      if (c.telegraphMesh) c.telegraphMesh.visible = false;
+      c.telegraphT = 0;
+    }
     for (const b of this.bullets) { b.mesh.visible = false; b.live = false; }
     this._spawnTimer = CFG.ENEMY_FIRST_DELAY;
   }
@@ -29,6 +33,12 @@ export class Enemies {
   _spawnEnemy(player) {
     let c = this.cars.find((x) => !x.mesh.visible);
     if (!c) { const mesh = makeEnemy(); this.group.add(mesh); c = { mesh }; this.cars.push(c); }
+    if (!c.telegraphMesh) {
+      // reused for every "winding up to throw" warning this car ever does
+      c.telegraphMesh = makeGrenade();
+      c.telegraphMesh.visible = false;
+      this.group.add(c.telegraphMesh);
+    }
     c.mesh.visible = true;
     // approach from BEHIND, then drive AHEAD of the player to attack
     const onc = this.road.oncomingLanes || 0;
@@ -37,6 +47,8 @@ export class Enemies {
     c.z = CFG.VISIBLE_BEHIND * 0.5;          // start behind, will move ahead
     c.targetX = c.x;
     c.fireTimer = 2.0 + Math.random() * 1.5;
+    c.telegraphT = 0;
+    c.telegraphMesh.visible = false;
     c.knocked = false; c.alive = true; c.age = 0;
     c.slot = this.cars.filter((x) => x !== c && x.mesh.visible && x.alive).length; // unique lead slot
     c.ky = 0; c.kvx = 0; c.kvy = 0; c.kspin = 0; c.airborne = false; c.cy = 0; c.vy = 0; c._behind = 0;
@@ -80,6 +92,9 @@ export class Enemies {
     for (const c of this.cars) {
       if (!c.mesh.visible) continue;
       if (c.knocked) {
+        // getting rammed cancels any grenade it was winding up to throw
+        if (c.telegraphMesh) c.telegraphMesh.visible = false;
+        c.telegraphT = 0;
         // tumbling off the road after being rammed
         c.x += c.kvx * dt; c.ky = (c.ky ?? 0) + (c.kvy -= 22 * dt) * dt;
         if (c.ky < 0) { c.ky = 0; c.kvy *= -0.4; c.kvx *= 0.7; }
@@ -148,12 +163,32 @@ export class Enemies {
       }
       c.mesh.position.set(c.x, c.cy || 0, c.z);
 
-      // lob a grenade back at the player once they're ahead & in range
-      c.fireTimer -= dt;
-      if (c.fireTimer <= 0 && c.z < -3 && c.z > -50) {
-        this._fire(c, player);
-        c.fireTimer = CFG.ENEMY_FIRE_INTERVAL * (0.8 + Math.random() * 0.6);
-        onEvent?.('shoot', c);
+      // lob a grenade back at the player once they're ahead & in range — but
+      // telegraph it first: ~1s of something slowly sliding out the back of
+      // the car (growing + edging outward) before it's actually thrown, so
+      // the player gets a fair warning and a chance to react/ram them first.
+      if (c.telegraphT > 0) {
+        c.telegraphT -= dt;
+        const t = c.telegraphMesh;
+        const p = 1 - Math.max(0, c.telegraphT) / CFG.ENEMY_TELEGRAPH_TIME; // 0..1 progress
+        t.visible = true;
+        t.scale.setScalar(0.2 + 0.8 * p);                 // grows from a nub to full size
+        const slideOut = 0.3 + p * 1.9;                    // eases out toward the _fire() pop point
+        t.position.set(c.x, 0.35 + 0.25 * p, c.z + slideOut);
+        t.rotation.y += dt * (2 + p * 4);                   // slow spin that quickens = "arming"
+        if (t.userData.tip) t.userData.tip.material.emissiveIntensity = 0.6 + p * 2.2 + Math.sin(performance.now() * 0.02) * 0.4;
+        if (c.telegraphT <= 0) {
+          t.visible = false;
+          this._fire(c, player);
+          c.fireTimer = CFG.ENEMY_FIRE_INTERVAL * (0.8 + Math.random() * 0.6);
+          onEvent?.('shoot', c);
+        }
+      } else {
+        c.fireTimer -= dt;
+        if (c.fireTimer <= 0 && c.z < -3 && c.z > -50) {
+          c.telegraphT = CFG.ENEMY_TELEGRAPH_TIME; // start the windup; the actual
+          // throw happens once it counts down (see branch above)
+        }
       }
       if (c.mesh.userData.enemyAccent) c.mesh.userData.enemyAccent.material.emissiveIntensity = 0.4 + Math.sin(performance.now() * 0.01) * 0.3;
 

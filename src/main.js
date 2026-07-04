@@ -240,6 +240,11 @@ class Game {
         // frame, so it's already there by the time you reach it — the CURRENT
         // road (nearer than the junction) is left completely alone.
         this.traffic.preloadBeyond({ ...section, oncomingLanes: this._pendingLayout.oncomingLanes }, ix.position.z);
+        // same idea for the road markings themselves: the centre-line divider
+        // beyond the junction previews the NEW layout while the near side
+        // keeps showing the current one (was previously all-or-nothing,
+        // reading as "mismarked" lines past the intersection).
+        this.road.previewOncomingBeyond(this._pendingLayout.oncomingLanes, ix.position.z);
       }
       // apply exactly when you drive through the junction
       if (ix && ix.visible && ix.position.z >= 0) {
@@ -247,6 +252,10 @@ class Game {
         this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
         this._pendingLayout = null;
         this.traffic.turnZ = null;
+        this.traffic.haltSpawns = false; // BUG FIX: spawns must resume, or the
+        // road stays empty forever after the first transition (this was the
+        // "NPC cars stop appearing at higher speed" report — they weren't
+        // speed-related, spawning had simply never been re-enabled).
         // hand the main sweep off to continue from where the pre-load left
         // off — no gap, no duplicate rows, no instant burst-fill needed.
         this.traffic.adoptPreload();
@@ -537,12 +546,17 @@ class Game {
         // pre-load the HIGHWAY beyond the junction so it's already there —
         // the current desert road nearer than it stays exactly as it is.
         this.traffic.preloadBeyond({ ...this.director.current, oncomingLanes: 0 }, ix.position.z);
+        // preview the highway's (no oncoming) markings beyond the junction too
+        this.road.previewOncomingBeyond(0, ix.position.z);
       }
       if ((ix && ix.visible && ix.position.z >= 0) || p.distance > this._desertUntil + 60) {
         // merge complete: restore the highway as a NORMAL transition (no banking)
         this._desertMerging = false;
         this.traffic.desert = false; this.road.setDesertShoulder(false);
         this.traffic.turnZ = null;
+        this.traffic.haltSpawns = false; // BUG FIX: same missing re-enable as
+        // the two-way transition above — without this, traffic never spawns
+        // again for the rest of the run once you take a desert exit.
         this._appliedOncoming = 0; this.road.setOncomingLanes(0);
         this.terrain.forceTheme?.(null);           // resume theme cycling (eases over time)
         this.audio.setMusicTrack?.('music');
