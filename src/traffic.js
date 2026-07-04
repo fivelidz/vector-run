@@ -141,6 +141,52 @@ export class Traffic {
 
   setDifficulty(d) { this.difficulty = d; }
 
+  // ---- pre-load the UPCOMING road layout, strictly BEYOND an approaching
+  // intersection, without touching anything nearer than it. This is what makes
+  // the new environment already present by the time the player reaches the
+  // junction — the CURRENT road (between the player and the intersection) is
+  // completely untouched; this uses its own cursor + open-lane key so it can
+  // never corrupt the main near-player sweep's state.
+  preloadBeyond(newSection, boundaryZ) {
+    const farZ = -CFG.VISIBLE_AHEAD;
+    if (this._preRowZ === undefined || this._preRowZ > boundaryZ) {
+      this._preRowZ = boundaryZ - 12; // start just beyond the junction
+      this._preOpenLane = undefined;
+    }
+    const onc = newSection.oncomingLanes || 0;
+    let guard = 0;
+    while (this._preRowZ > farZ && guard++ < 4) { // small budget per frame
+      this._spawnRow(newSection, this._preRowZ, onc, '_preOpenLane');
+      const d = this.difficulty;
+      const gap = (CFG.ROW_GAP_MAX - (CFG.ROW_GAP_MAX - CFG.ROW_GAP_MIN) * d) * (0.85 + Math.random() * 0.4);
+      this._preRowZ -= gap;
+    }
+  }
+
+  // Called once the player actually crosses the junction: hand the main sweep
+  // off to continue from wherever the pre-loader had reached, so the two merge
+  // into one continuous stretch with no gap and no duplicate rows.
+  adoptPreload() {
+    if (this._preRowZ !== undefined) {
+      this._nextRowZ = Math.min(this._nextRowZ ?? this._preRowZ, this._preRowZ);
+      this._openLane = this._preOpenLane;
+    }
+    this._preRowZ = undefined; this._preOpenLane = undefined;
+  }
+
+  // One-time cleanup when a transition is TRIGGERED: remove any traffic that
+  // already exists beyond the intersection's starting point — it was spawned
+  // under the OLD rules and wouldn't fit the new layout (e.g. wrong-direction
+  // oncoming cars). Only clears the far region; the current road is untouched.
+  clearBeyond(z) {
+    for (let i = this.active.length - 1; i >= 0; i--) {
+      const e = this.active[i];
+      if (e.z < z && (e.type === 'car' || e.type === 'truck')) {
+        e.mesh.visible = false; this.pools[e.poolKey].push(e); this.active.splice(i, 1);
+      }
+    }
+  }
+
   // Called when the road layout (oncoming/median) changes. Despawn far-ahead
   // traffic (it would be in now-wrong-direction lanes) and pause spawns briefly
   // so the new layout starts clean — no cars driving the wrong way.
@@ -249,22 +295,24 @@ export class Traffic {
     }
   }
 
-  _spawnRow(section, z, onc) {
+  // laneKey lets an INDEPENDENT sweep (the pre-loader below) track its own
+  // guaranteed-open-lane continuity without touching the main sweep's state.
+  _spawnRow(section, z, onc, laneKey = '_openLane') {
     const n = section.lanes;
     const fwdLanes = [];
     for (let i = onc; i < n; i++) if (!section.blockedLanes?.includes(i)) fwdLanes.push(i);
     if (!fwdLanes.length) return;
 
     // choose this row's guaranteed-open lane, adjacent to previous open lane
-    if (this._openLane === undefined || !fwdLanes.includes(this._openLane)) {
-      this._openLane = fwdLanes[(Math.random() * fwdLanes.length) | 0];
+    if (this[laneKey] === undefined || !fwdLanes.includes(this[laneKey])) {
+      this[laneKey] = fwdLanes[(Math.random() * fwdLanes.length) | 0];
     } else {
       const step = (Math.random() < 0.5 ? -1 : 1);
-      const cand = this._openLane + step;
-      if (fwdLanes.includes(cand)) this._openLane = cand;        // drift the path
+      const cand = this[laneKey] + step;
+      if (fwdLanes.includes(cand)) this[laneKey] = cand;        // drift the path
       // else keep same open lane (still reachable)
     }
-    const openLane = this._openLane;
+    const openLane = this[laneKey];
 
     // fill the other forward lanes with a probability that rises with difficulty
     const d = this.difficulty;

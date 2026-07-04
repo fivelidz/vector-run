@@ -219,11 +219,16 @@ class Game {
     //          distance, the intersection passes and the new layout begins.
     const layoutChanged = section.oncomingLanes !== this._appliedOncoming;
     if (layoutChanged && !this._pendingLayout) {
-      // announce it; stop spawning so the road empties, and send an INTERSECTION
-      // in from the horizon. The layout only flips when you DRIVE THROUGH it.
+      // announce it; stop spawning NEAR the player so the current road empties
+      // naturally, and send an INTERSECTION in from the horizon. The layout
+      // only flips (for the player/road/HUD) when you DRIVE THROUGH it.
       this._pendingLayout = { oncomingLanes: section.oncomingLanes };
       this.traffic.haltSpawns = true;
       this.road.triggerIntersection?.();
+      // one-time cleanup: remove any already-existing traffic beyond where the
+      // intersection just spawned (it was placed under the OLD rules and won't
+      // fit the new layout) — this does NOT touch anything nearer than that.
+      this.traffic.clearBeyond(this.road.intersection.position.z);
       this.hud.combo(section.oncomingLanes > 0 ? '⇅ TWO-WAY AHEAD' : 'JUNCTION AHEAD', '#ffd23f');
     }
     if (this._pendingLayout) {
@@ -231,6 +236,10 @@ class Game {
       if (ix && ix.visible) {
         // NPCs that reach the junction turn off (they exit there)
         this.traffic.turnZ = ix.position.z;
+        // pre-load the UPCOMING layout strictly BEYOND the junction, every
+        // frame, so it's already there by the time you reach it — the CURRENT
+        // road (nearer than the junction) is left completely alone.
+        this.traffic.preloadBeyond({ ...section, oncomingLanes: this._pendingLayout.oncomingLanes }, ix.position.z);
       }
       // apply exactly when you drive through the junction
       if (ix && ix.visible && ix.position.z >= 0) {
@@ -238,8 +247,9 @@ class Game {
         this.road.setOncomingLanes(this._pendingLayout.oncomingLanes);
         this._pendingLayout = null;
         this.traffic.turnZ = null;
-        // burst-fill the road ahead immediately (no slow trickle / empty-road pop-in)
-        this.traffic.fillAheadNow({ ...section, oncomingLanes: this._appliedOncoming });
+        // hand the main sweep off to continue from where the pre-load left
+        // off — no gap, no duplicate rows, no instant burst-fill needed.
+        this.traffic.adoptPreload();
       }
     }
     p.setLaneCount(section.lanes);
@@ -515,22 +525,29 @@ class Game {
       this._desertMerging = true;
       this.traffic.haltSpawns = true;              // let the desert road empty
       this.road.triggerIntersection?.();           // junction back to the highway
+      // clear stale desert traffic beyond the junction (won't fit the highway);
+      // the current desert road nearer than it is untouched.
+      this.traffic.clearBeyond(this.road.intersection.position.z);
       this.hud.combo('MERGE AHEAD → HIGHWAY', '#ffd23f');
     }
     if (this._desertMerging) {
       const ix = this.road.intersection;
-      if (ix && ix.visible) this.traffic.turnZ = ix.position.z; // desert cars exit
+      if (ix && ix.visible) {
+        this.traffic.turnZ = ix.position.z; // desert cars exit
+        // pre-load the HIGHWAY beyond the junction so it's already there —
+        // the current desert road nearer than it stays exactly as it is.
+        this.traffic.preloadBeyond({ ...this.director.current, oncomingLanes: 0 }, ix.position.z);
+      }
       if ((ix && ix.visible && ix.position.z >= 0) || p.distance > this._desertUntil + 60) {
         // merge complete: restore the highway as a NORMAL transition (no banking)
         this._desertMerging = false;
         this.traffic.desert = false; this.road.setDesertShoulder(false);
-        this.traffic.turnZ = null; this.traffic.haltSpawns = false;
+        this.traffic.turnZ = null;
         this._appliedOncoming = 0; this.road.setOncomingLanes(0);
         this.terrain.forceTheme?.(null);           // resume theme cycling (eases over time)
         this.audio.setMusicTrack?.('music');
-        this.traffic.clearAll();
-        // burst-fill the highway ahead immediately (no empty-road pop-in)
-        this.traffic.fillAheadNow({ ...this.director.current, oncomingLanes: 0 });
+        // hand off to the pre-loaded stretch — no wipe, no pop-in
+        this.traffic.adoptPreload();
         this.hud.combo('BACK ON THE HIGHWAY', '#ffd23f');
         // set a fresh exit cooldown so it doesn't immediately offer another exit
         this._nextExitAt = p.distance + 700 + Math.random() * 500;

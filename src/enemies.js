@@ -100,8 +100,12 @@ export class Enemies {
 
       // fatigue: they get ahead for a while, then drift back so you can ram them
       const driftBack = Math.max(0, (c.age - CFG.ENEMY_FATIGUE_TIME) * 2.0);
+      // at LOW player speed they're relatively faster and pull further ahead;
+      // at high player speed the extra edge fades (you're already fast enough)
+      const slowFactor = 1 - Math.min(1, player.speed / CFG.MAX_SPEED);
+      const extraLead = slowFactor * CFG.ENEMY_SLOW_BONUS_LEAD;
       // the oldest (rank 0) leads closest; later ranks sit progressively further
-      const desiredZ = -CFG.ENEMY_LEAD_DIST - rank * 8 + Math.min(CFG.ENEMY_LEAD_DIST + 8, driftBack);
+      const desiredZ = -(CFG.ENEMY_LEAD_DIST + extraLead) - rank * 8 + Math.min(CFG.ENEMY_LEAD_DIST + 8, driftBack);
       c.z += (desiredZ - c.z) * Math.min(1, dt * 0.7);
 
       // DISTINCT LANES: oldest takes the player's lane; others take separate

@@ -95,6 +95,7 @@ export const CFG = {
   ENEMY_INTERVAL: 16,       // seconds between enemy spawns
   ENEMY_MAX: 2,             // max enemy cars at once
   ENEMY_LEAD_DIST: 10,      // metres they drive AHEAD of the player to attack
+  ENEMY_SLOW_BONUS_LEAD: 9, // extra lead distance they gain when player is slow
   ENEMY_FATIGUE_TIME: 20,   // seconds at full pace before they tire & drift back
   ENEMY_STUCK_TIME: 10,     // seconds stuck behind the player before surging forward again
   ENEMY_FIRE_INTERVAL: 2.6, // seconds between grenade lobs

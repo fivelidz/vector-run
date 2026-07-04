@@ -124,12 +124,8 @@ export class Menus {
       const label = document.createElement('div');
       label.textContent = owned ? car.name : `🔒 ${car.cost}🪙`;
       cell.appendChild(label);
-      // top-speed stat, shown for every car so the difference is actually stated
-      const speedPct = Math.round((car.speedMult ?? 1) * 100);
-      const speedRow = document.createElement('div');
-      speedRow.className = 'car-speed';
-      speedRow.textContent = `⚡ Top speed ${speedPct}%`;
-      cell.appendChild(speedRow);
+      // (speed differences are intentionally NOT displayed — each car still has
+      // its own top-speed feel + racing stripe, just discovered by driving it)
       cell.addEventListener('click', () => {
         this.audio?.click();
         if (owned) { Save.setCar(car.id); }
