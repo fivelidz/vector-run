@@ -132,11 +132,13 @@ export class Road {
     this._initVColors(roadGeo, PAL.road); // (was missing -> black vertexColors -> dark road!)
 
     // shoulders (lighter edge strips)
+    this._bendable = []; // meshes that get their vertices bent by the road curve
     for (const sx of [-1, 1]) {
-      const sh = new THREE.Mesh(new THREE.PlaneGeometry(0.4, len), flat(PAL.roadEdge));
+      const sh = new THREE.Mesh(new THREE.PlaneGeometry(0.4, len, 1, this._segZ), flat(PAL.roadEdge));
       sh.rotation.x = -Math.PI / 2;
       sh.position.set(sx * (this.halfRoad + 0.2), 0.01, grass.position.z);
       this.group.add(sh);
+      this._bendable.push(sh);
     }
 
     // DESERT dirt shoulder lanes (hidden until desertShoulder is on) — a wide
@@ -144,14 +146,16 @@ export class Road {
     this.dirtShoulders = new THREE.Group();
     const dirtMat = flat(0xc9a870, { rough: 1 });
     for (const sx of [-1, 1]) {
-      const d = new THREE.Mesh(new THREE.PlaneGeometry(6, len), dirtMat);
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(6, len, 1, this._segZ), dirtMat);
       d.rotation.x = -Math.PI / 2;
       d.position.set(sx * (this.halfRoad + 3.2), 0.005, grass.position.z);
       this.dirtShoulders.add(d);
-      const rumble = new THREE.Mesh(new THREE.PlaneGeometry(0.3, len), flat(0x8a7048));
+      this._bendable.push(d);
+      const rumble = new THREE.Mesh(new THREE.PlaneGeometry(0.3, len, 1, this._segZ), flat(0x8a7048));
       rumble.rotation.x = -Math.PI / 2;
       rumble.position.set(sx * (this.halfRoad + 0.35), 0.012, grass.position.z);
       this.dirtShoulders.add(rumble);
+      this._bendable.push(rumble);
       if (sx > 0) { this._dirtR = d; this._dirtRumbleR = rumble; }
     }
     this.dirtShoulders.visible = false;
@@ -166,7 +170,8 @@ export class Road {
       const x = -this.halfRoad + this.laneW * line;
       for (let d = 0; d < dashCount; d++) {
         const m = new THREE.Mesh(new THREE.PlaneGeometry(0.18, dashLen), dashMat);
-        m.rotation.x = -Math.PI / 2;
+        m.rotation.order = 'YXZ';   // yaw (world Y) applied before the flatten
+        m.rotation.set(-Math.PI / 2, 0, 0);
         m.position.set(x, 0.02, 0);
         m.userData = { baseZ: CFG.VISIBLE_BEHIND - d * period, period, total: dashCount * period, lineIndex: line };
         this.group.add(m);
@@ -183,11 +188,11 @@ export class Road {
     // double-yellow centre line (two thin emissive strips)
     this.centerLine = new THREE.Group();
     for (const off of [-0.12, 0.12]) {
-      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.16, medLen),
+      const strip = new THREE.Mesh(new THREE.PlaneGeometry(0.16, medLen, 1, this._segZ),
         flat(PAL.roadLine, { emissive: 0x332a00, emissiveIntensity: 0.25 }));
       strip.rotation.x = -Math.PI / 2;
       strip.position.set(off, 0.03, 0);
-      this.centerLine.add(strip);
+      this.centerLine.add(strip); // bent via the centerLine.children loop in _bendGround
     }
     this.centerLine.position.z = grass.position.z;
     this.centerLine.visible = false;
@@ -397,12 +402,12 @@ export class Road {
         const inner = -this.halfRoad + this.laneW * 3; // boundary lane2|lane3
         const outer = this.halfRoad + 9;
         this._dirtR.geometry.dispose();
-        this._dirtR.geometry = new THREE.PlaneGeometry(outer - inner, this._groundLen);
+        this._dirtR.geometry = new THREE.PlaneGeometry(outer - inner, this._groundLen, 1, this._segZ);
         this._dirtR.position.x = (inner + outer) / 2;
         if (this._dirtRumbleR) this._dirtRumbleR.position.x = inner;
       } else {
         this._dirtR.geometry.dispose();
-        this._dirtR.geometry = new THREE.PlaneGeometry(6, this._groundLen);
+        this._dirtR.geometry = new THREE.PlaneGeometry(6, this._groundLen, 1, this._segZ);
         this._dirtR.position.x = this.halfRoad + 3.2;
         if (this._dirtRumbleR) this._dirtRumbleR.position.x = this.halfRoad + 0.35;
       }
@@ -444,6 +449,8 @@ export class Road {
       d.visible = !d.userData._hideDesert;
       d.position.x = (d.userData.baseX ?? d.position.x) + this.curveX(z);
       if (d.userData.baseX === undefined) d.userData.baseX = d.position.x - this.curveX(z);
+      // subtle yaw so each dash reads as following the bend, not just sliding
+      d.rotation.y = this.curveSlope(z) * 3.2;
     }
     for (const s of this.scenery) {
       const z = wrap(s);
@@ -478,23 +485,42 @@ export class Road {
     if (ahead <= 0) return 0;
     return this.curve * ahead * ahead * 0.0016;
   }
+  // d(curveX)/dz — the local tangent slope, used to yaw short elements (dashes)
+  // so they visually angle along the bend instead of just sliding sideways.
+  curveSlope(z) {
+    if (!this.curve) return 0;
+    const ahead = -z;
+    if (ahead <= 0) return 0;
+    return -this.curve * ahead * 0.0032; // derivative wrt z (z negative ahead)
+  }
 
-  // bend the road & grass mesh vertices sideways by curveX for each row
-  _bendGround() {
-    for (const mesh of [this.roadMesh, this.grassMesh]) {
-      if (!mesh) continue;
-      const pos = mesh.geometry.attributes.position;
-      const base = mesh.geometry.userData._baseX || (mesh.geometry.userData._baseX = pos.array.slice());
-      for (let i = 0; i <= this._segZ; i++) {
-        const wz = this._rowWorldZ(i);
-        const off = this.curveX(wz);
-        for (let cx = 0; cx < 2; cx++) {
-          const vi = i * 2 + cx;
-          pos.setX(vi, base[vi * 3] + off);
-        }
+  // Bend ANY full-length segmented-plane mesh sideways by curveX, per row. This
+  // works uniformly whether the mesh is centred (road/grass) or offset to one
+  // side (shoulder lines, centre line, dirt shoulders) because we only ever
+  // add a lateral OFFSET to each vertex's local X — pure translations compose,
+  // so the world-space bend is identical regardless of the mesh's own position.
+  _bendMesh(mesh) {
+    if (!mesh || !mesh.geometry?.attributes?.position) return;
+    const pos = mesh.geometry.attributes.position;
+    const base = mesh.geometry.userData._baseX || (mesh.geometry.userData._baseX = pos.array.slice());
+    if (base.length !== pos.array.length) { mesh.geometry.userData._baseX = pos.array.slice(); return; } // geometry was replaced
+    for (let i = 0; i <= this._segZ; i++) {
+      const wz = this._rowWorldZ(i);
+      const off = this.curveX(wz);
+      for (let cx = 0; cx < 2; cx++) {
+        const vi = i * 2 + cx;
+        if (vi * 3 >= base.length) continue;
+        pos.setX(vi, base[vi * 3] + off);
       }
-      pos.needsUpdate = true;
     }
+    pos.needsUpdate = true;
+  }
+
+  _bendGround() {
+    this._bendMesh(this.roadMesh);
+    this._bendMesh(this.grassMesh);
+    for (const m of this._bendable || []) this._bendMesh(m);
+    for (const m of this.centerLine?.children || []) this._bendMesh(m);
   }
 }
 

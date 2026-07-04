@@ -16,7 +16,7 @@ const TYPES = {
   block:   { w: 1.0, l: 2.1, kind: 'heavy', mesh: 'block' },    // parked cruiser
   ramp:    { w: 1.2, l: 1.6, kind: 'ramp', mesh: 'ramp' },      // launch pad
   powerup: { w: 0.8, l: 0.8, kind: 'powerup', mesh: 'powerup' },// power-up pickup
-  rock:    { w: 0.85, l: 0.85, kind: 'knock', mesh: 'rock' },   // desert shoulder hazard
+  rock:    { w: 1.7, l: 1.7, kind: 'heavy', mesh: 'rock' },     // LARGE desert boulder — full impact, a real hazard
 };
 
 export class Traffic {

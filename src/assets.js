@@ -377,13 +377,25 @@ export function makeExitSign(roadHalf) {
   return grp;
 }
 
-// ---- Rock (desert obstacle) ----
+// ---- Rock (LARGE desert boulder — a genuine hazard, not a pebble) ----
 export function makeRock() {
   const grp = new THREE.Group();
-  const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.85 + Math.random() * 0.4, 0), flat(0x8a7a5a, { rough: 1 }));
-  r.position.y = 0.5; r.rotation.set(Math.random(), Math.random(), Math.random()); r.castShadow = true;
-  grp.add(r);
-  grp.userData.dims = { W: 1.0, L: 1.0, H: 1.2 };
+  const mat = flat(0x8a7a5a, { rough: 1 });
+  // big central boulder
+  const core = new THREE.Mesh(new THREE.DodecahedronGeometry(1.5 + Math.random() * 0.4, 0), mat);
+  core.position.y = 1.1; core.rotation.set(Math.random(), Math.random(), Math.random()); core.castShadow = true;
+  grp.add(core);
+  // smaller companion rocks around the base so it reads as a boulder pile
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + Math.random();
+    const rr = 0.5 + Math.random() * 0.3;
+    const small = new THREE.Mesh(new THREE.DodecahedronGeometry(rr, 0), flat(0x7a6a4d, { rough: 1 }));
+    small.position.set(Math.cos(a) * 1.3, rr * 0.6, Math.sin(a) * 1.3);
+    small.rotation.set(Math.random(), Math.random(), Math.random());
+    small.castShadow = true;
+    grp.add(small);
+  }
+  grp.userData.dims = { W: 2.0, L: 2.0, H: 2.2 };
   return grp;
 }
 

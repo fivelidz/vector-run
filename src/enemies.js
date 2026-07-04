@@ -105,9 +105,15 @@ export class Enemies {
       c.z += (desiredZ - c.z) * Math.min(1, dt * 0.7);
 
       // DISTINCT LANES: oldest takes the player's lane; others take separate
-      // adjacent lanes so they never bunch up on top of each other.
+      // adjacent lanes so they never bunch up on top of each other. BUT while
+      // an enemy is still behind/alongside (not safely ahead yet), it stays OUT
+      // of the player's lane — even the rank-0 leader — so the overtake itself
+      // doesn't clip the player; it only slots into the lead lane once past.
+      const safelyAhead = c.z < -(CFG.CAR_HALF_L * 2 + 3);
       const laneOffs = [0, CFG.LANE_WIDTH, -CFG.LANE_WIDTH, CFG.LANE_WIDTH * 2];
-      let want = player.x + (laneOffs[rank] ?? CFG.LANE_WIDTH * (rank - 1));
+      let effRank = rank;
+      if (!safelyAhead && rank === 0) effRank = 1; // overtake to the side first
+      let want = player.x + (laneOffs[effRank] ?? CFG.LANE_WIDTH * (effRank - 1));
       const maxX = this.road.halfRoad - CFG.LANE_WIDTH * 0.5;
       want = Math.max(-maxX, Math.min(maxX, want));
       c.targetX += (want - c.targetX) * Math.min(1, dt * 0.6);

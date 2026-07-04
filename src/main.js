@@ -111,6 +111,22 @@ class Game {
         else if (this.state === GS.PAUSE) { this._last = performance.now(); this._acc = 0; this.state = GS.PLAY; this.audio.startEngine(); this.menus.hidePause(); this.hud.show(); }
       }
     });
+
+    // Stop all sound the instant the screen locks / app is backgrounded /
+    // browser tab is hidden. Also auto-pauses an active run so it doesn't keep
+    // ticking silently while the phone is locked in someone's pocket.
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.audio.stopAll();
+        this.audio.ctx?.suspend?.();
+        if (this.state === GS.PLAY) { this.state = GS.PAUSE; this.menus.showPause(); }
+      } else {
+        this.audio.resume();
+        if (this.state === GS.PLAY) { this.audio.startEngine(); }
+      }
+    });
+    window.addEventListener('pagehide', () => { this.audio.stopAll(); });
+    window.addEventListener('blur', () => { this.audio.stopAll(); });
   }
 
   _applySettings() {
@@ -140,7 +156,9 @@ class Game {
     this._nextExitAt = 400 + Math.random() * 250; // distance of first exit prompt
     this._desertUntil = 0;                // distance until which desert area lasts
     this._exitAnim = 0; this._desertMerging = false; this.engine.setBank(0);
-    this._curve = 0; this._curvePhase = 0; this.road.setCurve(0); this.engine.setCurveBank(0);
+    this._curve = 0; this._curveTarget = 0; this._curveState = 'straight';
+    this._curveDist = 350 + Math.random() * 400; // first stretch is straight
+    this.road.setCurve(0); this.engine.setCurveBank(0);
     this.traffic.desert = false; this.road.setDesertShoulder(false);
     // clear leftover run-state from the previous run
     this.exitSign.visible = false;
@@ -274,17 +292,29 @@ class Game {
     // exit-lane events (Temple-Run style branch into new areas)
     this._updateExits(distDelta, p);
 
-    // winding road: slow, smooth left/right curvature target (toggle in settings)
+    // Winding road: the game is MOSTLY STRAIGHT with occasional gentle bends —
+    // a state machine, not a constant sine wave (which made turns feel endless).
     if (Save.settings.curves !== false && !this.traffic.desert && this._exitAnim <= 0) {
-      this._curvePhase = (this._curvePhase || 0) + distDelta * 0.0016;
-      this._curveTarget = (Math.sin(this._curvePhase) + 0.5 * Math.sin(this._curvePhase * 2.3)) * 0.9;
+      this._curveDist = (this._curveDist || 0) - distDelta;
+      if (this._curveDist <= 0) {
+        if (this._curveState !== 'curve') {
+          // start a single gentle curve
+          this._curveState = 'curve';
+          this._curveTarget = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.35);
+          this._curveDist = 130 + Math.random() * 90; // short bend
+        } else {
+          // back to a long straight stretch
+          this._curveState = 'straight';
+          this._curveTarget = 0;
+          this._curveDist = 500 + Math.random() * 700; // mostly straight
+        }
+      }
     } else {
       this._curveTarget = 0;
     }
-    this._curve = (this._curve || 0) + (this._curveTarget - (this._curve || 0)) * Math.min(1, dt * 0.8);
+    this._curve = (this._curve || 0) + (this._curveTarget - (this._curve || 0)) * Math.min(1, dt * 0.5);
     this.road.setCurve(this._curve);
-    // bank the camera into the curve for feel
-    this.engine.setCurveBank(this._curve * 0.09);
+    this.engine.setCurveBank(this._curve * 0.06); // gentle look-pan only, no roll
 
     // scroll road & spawn/move traffic
     this.road.update(distDelta);

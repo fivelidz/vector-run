@@ -55,7 +55,7 @@ export const CFG = {
   JUMP_COOLDOWN: 0.18,      // brief lockout after landing (s)
   JUMP_AIR_STEER: 0.85,     // steering effectiveness while airborne (frac)
   OBSTACLE_TOP: {           // approximate top height (m) of each obstacle type
-    cone: 0.95, barrier: 1.0, car: 1.55, truck: 2.7, block: 1.8, coin: 1.4, ramp: 1.3,
+    cone: 0.95, barrier: 1.0, car: 1.55, truck: 2.7, block: 1.8, coin: 1.4, ramp: 1.3, rock: 2.9,
   },
 
   // ---- Near miss ----
